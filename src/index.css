@@ -1,0 +1,112 @@
+:root {
+  color: #173039;
+  font-family: "Bahnschrift", "Aptos", "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background:
+    radial-gradient(circle at top left, rgba(38, 122, 111, 0.18), transparent 34%),
+    radial-gradient(circle at top right, rgba(61, 116, 255, 0.12), transparent 28%),
+    linear-gradient(180deg, #f8f4ec, #efe6d7);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100vh;
+}
+
+body {
+  position: relative;
+}
+
+.touch-ui {
+  --touch-target-min-height: 44px;
+  --touch-control-padding-inline: 16px;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.42;
+  background-image:
+    linear-gradient(rgba(86, 104, 112, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(86, 104, 112, 0.08) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(circle at center, black 45%, transparent 95%);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.touch-ui button,
+.touch-ui [role="button"] {
+  touch-action: manipulation;
+}
+
+.touch-ui .ant-btn {
+  min-height: var(--touch-target-min-height);
+  padding-inline: var(--touch-control-padding-inline);
+  border-radius: 14px;
+}
+
+.touch-ui .ant-btn-sm {
+  min-height: 40px;
+}
+
+.touch-ui .ant-input,
+.touch-ui .ant-input-affix-wrapper,
+.touch-ui .ant-input-number,
+.touch-ui .ant-select-selector,
+.touch-ui .ant-picker,
+.touch-ui textarea.ant-input {
+  min-height: var(--touch-target-min-height);
+}
+
+.touch-ui .ant-select-single .ant-select-selector {
+  display: flex;
+  align-items: center;
+  padding-block: 6px;
+}
+
+.touch-ui .ant-input-number-input {
+  min-height: calc(var(--touch-target-min-height) - 8px);
+}
+
+.touch-ui .ant-switch {
+  min-width: 52px;
+}
+
+.touch-ui .ant-card-head {
+  min-height: 64px;
+}
+
+.touch-ui .ant-card-head-title,
+.touch-ui .ant-card-extra,
+.touch-ui .ant-tag,
+.touch-ui .ant-descriptions-item-label,
+.touch-ui .ant-descriptions-item-content {
+  white-space: normal;
+}
+
+.touch-ui .ant-card-extra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.touch-ui .ant-form-item {
+  margin-bottom: 18px;
+}

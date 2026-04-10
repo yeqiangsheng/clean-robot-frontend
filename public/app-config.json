@@ -1,0 +1,55 @@
+{
+  "siteName": "清洁机器人单机运维台",
+  "robotId": "local_robot",
+  "rosbridgeUrl": "ws://127.0.0.1:9090",
+  "quickRosbridgeUrls": [
+    "ws://127.0.0.1:9090",
+    "ws://10.0.0.157:9090",
+    "ws://10.0.0.174:9090"
+  ],
+  "enabledModules": {
+    "overview": true,
+    "workbench": true,
+    "tasks": true,
+    "schedules": true,
+    "execution": true,
+    "slam": true,
+    "runtime": true,
+    "actuator-control": true
+  },
+  "rolePolicy": {
+    "operator": [
+      "overview",
+      "taskManagement",
+      "scheduleManagement",
+      "executionControl",
+      "profileCatalog",
+      "systemReadiness"
+    ],
+    "service": [
+      "overview",
+      "mapWorkbench",
+      "taskManagement",
+      "scheduleManagement",
+      "executionControl",
+      "runtimeMonitoring",
+      "profileCatalog",
+      "systemReadiness"
+    ],
+    "engineer": [
+      "overview",
+      "mapWorkbench",
+      "taskManagement",
+      "scheduleManagement",
+      "executionControl",
+      "slamWorkbench",
+      "runtimeMonitoring",
+      "actuatorControl",
+      "chargingControl",
+      "profileCatalog",
+      "systemReadiness"
+    ]
+  },
+  "engineerUnlockMode": "direct",
+  "logRetentionDays": 14
+}

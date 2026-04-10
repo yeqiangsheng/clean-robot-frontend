@@ -1,0 +1,163 @@
+.map-canvas-shell {
+  position: relative;
+  min-height: 680px;
+  height: min(78vh, 860px);
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(120, 140, 150, 0.28);
+  background:
+    radial-gradient(circle at top right, rgba(60, 116, 255, 0.14), transparent 38%),
+    linear-gradient(180deg, rgba(10, 20, 26, 0.98), rgba(9, 17, 24, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 22px 70px rgba(10, 16, 22, 0.24);
+  touch-action: none;
+}
+
+.map-canvas-overlay {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.map-canvas-shell .konvajs-content,
+.map-canvas-shell canvas {
+  touch-action: none;
+}
+
+.map-canvas-controls {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.map-canvas-control-button {
+  min-width: 46px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(171, 190, 199, 0.24);
+  border-radius: 12px;
+  background: rgba(8, 16, 23, 0.78);
+  color: rgba(239, 232, 219, 0.92);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.map-canvas-control-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(96, 214, 182, 0.38);
+  background: rgba(12, 27, 36, 0.9);
+}
+
+.map-canvas-control-button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.map-canvas-control-button.is-reset {
+  min-width: 64px;
+  font-size: 13px;
+}
+
+.map-canvas-overlay span {
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(171, 190, 199, 0.24);
+  background: rgba(8, 16, 23, 0.58);
+  color: rgba(239, 232, 219, 0.85);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.map-canvas-empty-state {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 96px 40px 40px;
+  pointer-events: none;
+}
+
+.map-canvas-empty-state-card {
+  max-width: 420px;
+  padding: 14px 18px;
+  border: 1px solid rgba(171, 190, 199, 0.24);
+  border-radius: 18px;
+  background: rgba(8, 16, 23, 0.78);
+  box-shadow: 0 18px 36px rgba(5, 10, 16, 0.22);
+  color: rgba(239, 232, 219, 0.82);
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.touch-ui .map-canvas-shell {
+  min-height: 620px;
+}
+
+.touch-ui .map-canvas-controls {
+  gap: 10px;
+}
+
+.touch-ui .map-canvas-control-button {
+  min-width: 52px;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 14px;
+  font-size: 16px;
+}
+
+.touch-ui .map-canvas-control-button.is-reset {
+  min-width: 72px;
+}
+
+.touch-ui .map-canvas-overlay span {
+  min-height: 40px;
+  padding: 9px 14px;
+  font-size: 12px;
+}
+
+@media (max-width: 1220px) {
+  .map-canvas-shell {
+    min-height: 560px;
+    height: min(68vh, 720px);
+  }
+}
+
+@media (max-width: 900px) {
+  .map-canvas-shell {
+    min-height: 460px;
+    height: min(62vh, 620px);
+  }
+
+  .map-canvas-overlay,
+  .map-canvas-controls {
+    top: 12px;
+  }
+
+  .map-canvas-overlay {
+    left: 12px;
+    right: 104px;
+  }
+
+  .map-canvas-controls {
+    right: 12px;
+  }
+}

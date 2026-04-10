@@ -1,0 +1,306 @@
+.actuator-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100vh;
+  padding: 28px;
+}
+
+.actuator-page-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.actuator-page-header .ant-typography {
+  margin-bottom: 0;
+}
+
+.actuator-page-header .ant-typography h2 {
+  margin-bottom: 6px;
+}
+
+.actuator-banner {
+  border-radius: 20px;
+}
+
+.actuator-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 18px;
+  align-items: start;
+}
+
+.actuator-main,
+.actuator-side {
+  min-width: 0;
+}
+
+.actuator-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.actuator-side {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.actuator-control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.actuator-card {
+  border-radius: 22px;
+  border: 1px solid rgba(119, 133, 138, 0.18);
+  background: rgba(247, 243, 235, 0.88);
+  box-shadow:
+    0 14px 34px rgba(19, 34, 40, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(14px);
+}
+
+.actuator-card-wide {
+  grid-column: 1 / -1;
+}
+
+.actuator-card .ant-card-head {
+  min-height: 58px;
+}
+
+.actuator-card .ant-card-head,
+.actuator-card .ant-card-body,
+.actuator-page-header {
+  min-width: 0;
+}
+
+.actuator-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.actuator-inline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.actuator-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.actuator-action-grid-slim {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.actuator-action-grid-triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.actuator-action-button {
+  min-height: 52px;
+  border-radius: 16px;
+}
+
+.actuator-status-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actuator-charge-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.96fr) minmax(0, 1.04fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.actuator-charge-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(119, 133, 138, 0.16);
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.actuator-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.actuator-charge-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.actuator-status-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(119, 133, 138, 0.16);
+  background: rgba(248, 250, 252, 0.76);
+}
+
+.actuator-status-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.actuator-footnote {
+  margin-bottom: 0;
+  color: rgba(63, 76, 83, 0.74);
+  font-size: 12px;
+}
+
+.actuator-progress-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.actuator-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.actuator-progress-head .ant-typography {
+  margin-bottom: 0;
+}
+
+.actuator-payload-text {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.actuator-log-card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.actuator-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.actuator-log-item {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(119, 133, 138, 0.16);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.actuator-log-item-head,
+.actuator-log-step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.actuator-log-item-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.actuator-log-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.actuator-log-step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(246, 248, 250, 0.88);
+  border: 1px solid rgba(119, 133, 138, 0.14);
+}
+
+.actuator-log-tx {
+  font-family:
+    "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.actuator-no-margin {
+  margin-bottom: 0;
+}
+
+@media (max-width: 1220px) {
+  .actuator-page {
+    padding: 22px;
+  }
+
+  .actuator-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .actuator-side {
+    grid-row: auto;
+  }
+}
+
+.touch-ui .actuator-action-button {
+  min-height: 60px;
+}
+
+@media (max-width: 960px) {
+  .actuator-page {
+    padding: 18px;
+  }
+
+  .actuator-control-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .actuator-charge-layout,
+  .actuator-charge-status-grid,
+  .actuator-action-grid-triple {
+    grid-template-columns: 1fr;
+  }
+
+  .actuator-preset-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .actuator-inline-row,
+  .actuator-progress-head,
+  .actuator-section-head,
+  .actuator-status-panel-head,
+  .actuator-log-item-head,
+  .actuator-log-step-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

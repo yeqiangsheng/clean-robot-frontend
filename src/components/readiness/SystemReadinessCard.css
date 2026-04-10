@@ -1,0 +1,60 @@
+.readiness-card {
+  border-radius: 22px;
+  border: 1px solid rgba(119, 133, 138, 0.18);
+  background: rgba(247, 243, 235, 0.88);
+  box-shadow:
+    0 14px 34px rgba(19, 34, 40, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(14px);
+}
+
+.readiness-card .ant-card-head {
+  min-height: 58px;
+}
+
+.readiness-inner-card {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.readiness-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.readiness-check-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.readiness-check-main,
+.readiness-check-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.readiness-check-side {
+  align-items: flex-end;
+}
+
+.readiness-footnote {
+  margin-bottom: 0;
+  color: rgba(63, 76, 83, 0.74);
+  font-size: 12px;
+}
+
+@media (max-width: 960px) {
+  .readiness-check-row {
+    flex-direction: column;
+  }
+
+  .readiness-check-side {
+    align-items: flex-start;
+  }
+}

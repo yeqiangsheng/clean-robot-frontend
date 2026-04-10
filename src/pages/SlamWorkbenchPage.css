@@ -1,0 +1,219 @@
+.slam-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100vh;
+  padding: 28px;
+}
+
+.slam-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.slam-page-header .ant-typography {
+  margin-bottom: 0;
+}
+
+.slam-page-header .ant-typography h2 {
+  margin-bottom: 6px;
+}
+
+.slam-banner {
+  border-radius: 20px;
+}
+
+.slam-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.slam-actions-column,
+.slam-info-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.slam-card {
+  border-radius: 22px;
+  border: 1px solid rgba(119, 133, 138, 0.18);
+  background: rgba(247, 243, 235, 0.88);
+  box-shadow:
+    0 14px 34px rgba(19, 34, 40, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(14px);
+}
+
+.slam-card .ant-card-head {
+  min-height: 58px;
+}
+
+.slam-card .ant-card-body,
+.slam-card .ant-card-head,
+.slam-status-metric {
+  min-width: 0;
+}
+
+.slam-status-hero .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.slam-status-hero-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.slam-status-hero-top .ant-typography {
+  margin-bottom: 0;
+}
+
+.slam-status-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.slam-status-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(119, 133, 138, 0.16);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.slam-status-metric-label {
+  color: rgba(63, 76, 83, 0.72);
+  font-size: 12px;
+}
+
+.slam-status-metric-value {
+  word-break: break-word;
+}
+
+.slam-status-pill-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.slam-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(229, 241, 236, 0.86);
+  color: rgba(26, 96, 79, 0.92);
+}
+
+.slam-card-copy,
+.slam-footnote,
+.slam-json-drawer-copy {
+  margin-bottom: 0;
+}
+
+.slam-inline-alert {
+  margin-bottom: 14px;
+}
+
+.slam-inline-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.slam-json-pre {
+  margin: 0;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(119, 133, 138, 0.16);
+  background: rgba(18, 27, 31, 0.96);
+  color: rgba(233, 241, 243, 0.96);
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.slam-job-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.slam-job-history-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(119, 133, 138, 0.16);
+}
+
+.slam-job-history-item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.slam-job-history-actions {
+  flex-shrink: 0;
+}
+
+.slam-list-subtle {
+  color: rgba(63, 76, 83, 0.72);
+  font-size: 12px;
+}
+
+.slam-danger-card {
+  border-color: rgba(201, 71, 71, 0.24);
+}
+
+.touch-ui .slam-card .ant-btn,
+.coarse-pointer-ui .slam-card .ant-btn {
+  min-height: 44px;
+}
+
+@media (max-width: 1220px) {
+  .slam-page {
+    padding: 22px;
+  }
+
+  .slam-status-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1024px) {
+  .slam-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .slam-page {
+    padding: 18px;
+  }
+
+  .slam-status-metrics,
+  .slam-inline-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .slam-job-history-item {
+    flex-direction: column;
+  }
+}

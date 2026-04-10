@@ -1,0 +1,156 @@
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding: 20px 28px 14px;
+  backdrop-filter: blur(18px);
+}
+
+.app-topbar-main,
+.app-topbar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.app-topbar-main .ant-typography,
+.app-topbar-actions .ant-typography {
+  margin-bottom: 0;
+}
+
+.app-topbar-main .ant-typography h3 {
+  margin-bottom: 0;
+}
+
+.app-topbar-actions {
+  align-items: flex-end;
+}
+
+.app-shell-banner {
+  margin: 0 28px 12px;
+  border-radius: 20px;
+}
+
+.app-tabs > .ant-tabs-nav {
+  position: sticky;
+  top: 110px;
+  z-index: 20;
+  margin: 0;
+  padding: 0 28px;
+  backdrop-filter: blur(16px);
+}
+
+.app-tabs > .ant-tabs-nav::before {
+  border-bottom-color: rgba(119, 133, 138, 0.16);
+}
+
+.app-tabs > .ant-tabs-nav .ant-tabs-tab {
+  border-radius: 999px 999px 0 0;
+  background: rgba(247, 243, 235, 0.72);
+  border: 1px solid rgba(119, 133, 138, 0.16);
+  border-bottom: none;
+  margin-right: 8px;
+  min-height: 48px;
+  padding: 10px 18px;
+}
+
+.app-tabs > .ant-tabs-nav .ant-tabs-tab-active {
+  background: rgba(247, 243, 235, 0.94);
+}
+
+.app-tabs > .ant-tabs-content-holder {
+  min-height: calc(100vh - 160px);
+}
+
+.app-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-tab-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 56vh;
+  color: rgba(63, 76, 83, 0.82);
+}
+
+.app-error-panel {
+  padding: 24px 28px;
+}
+
+.app-error-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.app-error-content .ant-typography {
+  margin-bottom: 0;
+}
+
+.touch-ui .app-topbar {
+  padding: 18px 20px 12px;
+}
+
+.touch-ui .app-tabs > .ant-tabs-nav {
+  padding: 0 20px;
+}
+
+.touch-ui .app-tabs > .ant-tabs-nav .ant-tabs-nav-wrap {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.touch-ui .app-tabs > .ant-tabs-nav .ant-tabs-nav-list {
+  flex-wrap: nowrap;
+}
+
+.touch-ui .app-tabs > .ant-tabs-nav .ant-tabs-tab {
+  min-height: 52px;
+  padding: 12px 20px;
+}
+
+@media (max-width: 1220px) {
+  .app-topbar {
+    padding: 18px 18px 12px;
+  }
+
+  .app-topbar-actions {
+    align-items: flex-start;
+  }
+
+  .app-shell-banner {
+    margin: 0 18px 10px;
+  }
+
+  .app-tabs > .ant-tabs-nav {
+    top: 132px;
+    padding: 0 18px;
+  }
+
+  .app-error-panel {
+    padding: 18px;
+  }
+}
+
+@media (max-width: 960px) {
+  .app-tabs > .ant-tabs-nav {
+    top: 172px;
+  }
+}
