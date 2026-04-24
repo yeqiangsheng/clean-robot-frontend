@@ -1,18 +1,12 @@
 export type JsonRecord = Record<string, unknown>
 
 export type SlamActionKind =
-  | 'switch_map_and_localize'
+  | 'switch_map'
   | 'relocalize'
+  | 'restart_localization'
   | 'start_mapping'
-  | 'save_map'
+  | 'save_mapping'
   | 'stop_mapping'
-  | 'prepare_for_task'
-
-export type SlamJobTerminalState =
-  | 'SUCCEEDED'
-  | 'FAILED'
-  | 'MANUAL_ASSIST_REQUIRED'
-  | 'CANCELED'
 
 export type SlamTopicHealth =
   | 'disconnected'
@@ -24,84 +18,85 @@ export type SlamTopicHealth =
 export interface SubmitSlamWorkflowRequest {
   robotId?: string
   mapName?: string
-  frameId?: string
-  hasInitialPose?: boolean
-  initialPoseX?: number
-  initialPoseY?: number
-  initialPoseYaw?: number
-  saveMapName?: string
-  includeUnfinishedSubmaps?: boolean
-  setActiveOnSave?: boolean
-  switchToLocalizationAfterSave?: boolean
-  relocalizeAfterSwitch?: boolean
+  setActive?: boolean
+  description?: string
+  refreshMapIdentity?: boolean
+  restartLocalizationAfterSwitch?: boolean
 }
 
 export interface SlamWorkflowState {
-  workflowState: string
-  workflowPhase: string
-  busy: boolean
-  activeJobId: string
-  runtimeMode: string
+  desiredMode: string
+  currentMode: string
+  activeMapName: string
+  activeMapId: string
+  activeMapMd5: string
   runtimeMapName: string
   runtimeMapId: string
   runtimeMapMd5: string
-  assetActiveMapName: string
-  runtimeMapMatch: boolean | null
   localizationState: string
   localizationValid: boolean | null
-  mappingSessionActive: boolean
-  taskReady: boolean
-  manualAssistRequired: boolean
-  progressText: string
-  blockingReason: string
+  runtimeMapReady: boolean | null
+  activeMapMatch: boolean | null
+  lifecycleState: string
+  activeJobId: string
+  activeJobStatus: string
+  activeJobPhase: string
+  activeJobProgress01: number | null
+  mapTopicFresh: boolean | null
+  mapAgeS: number | null
+  trackedPoseFresh: boolean | null
+  trackedPoseAgeS: number | null
+  missionState: string
+  phase: string
+  publicState: string
+  executorState: string
+  taskRunning: boolean | null
+  canSwitchMap: boolean
+  canRestartLocalization: boolean
+  canStartMapping: boolean
+  canSaveMapping: boolean
+  canStopMapping: boolean
   lastErrorCode: string
   lastErrorMessage: string
-  updatedTs: number | null
+  blockingReasons: string[]
+  warnings: string[]
+  stampMs: number | null
   raw: JsonRecord
 }
 
 export interface SlamWorkflowJob {
   jobId: string
-  jobType: string
-  jobState: string
-  workflowPhase: string
-  progressPercent: number | null
-  progressText: string
-  resultSuccess: boolean | null
-  resultCode: string
-  resultMessage: string
-  runtimeMapName: string
-  runtimeMapMatch: boolean | null
+  robotId: string
+  operation: number | null
+  operationName: string
+  requestedMapName: string
+  resolvedMapName: string
+  setActive: boolean | null
+  description: string
+  status: string
+  phase: string
+  progress01: number | null
+  done: boolean
+  success: boolean | null
+  errorCode: string
+  message: string
+  currentMode: string
   localizationState: string
-  localizationValid: boolean | null
-  manualAssistRequired: boolean
-  createdTs: number | null
-  updatedTs: number | null
-  finishedTs: number | null
+  createdAtMs: number | null
+  startedAtMs: number | null
+  finishedAtMs: number | null
+  updatedAtMs: number | null
   raw: JsonRecord
 }
 
 export interface SlamSubmitJobResponse {
   accepted: boolean
   message: string
+  errorCode: string
   jobId: string
-  jobType: string
-  workflowState: string
-  manualAssistRequired: boolean
-  raw: JsonRecord
-}
-
-export interface SlamCancelJobResponse {
-  success: boolean
-  message: string
-  jobState: string
-  raw: JsonRecord
-}
-
-export interface SlamSyncRuntimeStateResponse {
-  success: boolean
-  message: string
-  state: SlamWorkflowState | null
+  operation: number | null
+  mapName: string
+  job: SlamWorkflowJob | null
   raw: JsonRecord
 }
 
@@ -119,6 +114,15 @@ export interface SlamWorkflowTopicSnapshot extends SlamTopicMeta {
   ageMs: number | null
   subscribeError: string | null
   state: SlamWorkflowState | null
+}
+
+export interface SlamJobTopicSnapshot extends SlamTopicMeta {
+  health: SlamTopicHealth
+  messageCount: number
+  lastMessageAt: number | null
+  ageMs: number | null
+  subscribeError: string | null
+  job: SlamWorkflowJob | null
 }
 
 export interface SlamCommandPreview {

@@ -1,185 +1,247 @@
 # Clean Robot Frontend
 
-商用清洁机器人前端试点工程。
+Commercial cleaning robot frontend for single-site Windows deployments.
 
-当前仓库面向“现场单机 Windows 试点交付”场景，目标是把前端补到可构建、可部署、可联调、可验收的状态，而不是量产级云端平台。工程已经具备任务管理、调度管理、地图工作台、运行监控、SLAM 工程台、执行控制、执行机构调试、诊断导出和现场启停脚本等能力。
+This repository now ships a two-layer site architecture:
 
-## Current Scope
+`Browser SPA -> Site Gateway -> ROS / rosbridge / robot services`
 
-- 现场单机 Windows 试点交付
-- 浏览器直连 `rosbridge`
-- 本地 `app-config.json` 配置加载与校验
-- 角色显隐与工程师模式隔离
-- Mock / Live 双模式联调
-- 统一 gateway 收口高风险前端写路径
-- 本地 `verify`、Vitest、Playwright smoke
+The frontend keeps the existing React/Vite page shell and operator workflows, while the local `site-gateway` becomes the commercial runtime boundary for:
 
-## Core Capabilities
+- local account login and session cookies
+- role/capability enforcement
+- audit persistence
+- high-risk command routing
+- diagnostics export
+- ROS / rosbridge proxying
+- Windows service hosting
+- packaged upgrade and rollback flows
 
-- 运行总览：连接状态、能力探测、诊断导出、审计摘要
-- 地图工作台：地图浏览、区域/禁区/虚拟墙编辑
-- 任务管理：任务 CRUD、区域与档位绑定
-- 调度管理：单次 / 每日 / 每周调度 CRUD
-- 执行控制：运行态任务选择、控制反馈
-- 运行监控：topic 健康度、运行状态、错误信息
-- SLAM 工程台：定位、切图、建图相关工作流
-- 执行机构调试：通过 gateway 统一下发高风险命令
+## What Is Included
 
-## Tech Stack
+- operations overview
+- map workbench
+- task management
+- schedule management
+- execution control
+- runtime monitoring
+- SLAM workbench
+- actuator debugging
+- local deployment scripts
+- diagnostics export
+- WinSW service install scripts
+- upgrade and rollback scripts
+- Vitest + Playwright smoke coverage
 
-- React 19
-- TypeScript
-- Vite
-- Ant Design
-- TanStack Query
-- Zustand
-- roslib
-- Vitest + React Testing Library
-- Playwright
+## Repository Layout
 
-## Quick Start
+```text
+src/                 React frontend shell and business pages
+site-gateway/        Local site gateway for auth, audit, ROS proxying, and static hosting
+public/              Public UI config served at runtime
+scripts/             Packaging, service install, upgrade, and rollback scripts
+tests/e2e/           Playwright smoke tests
+release/             Generated trial release bundles
+```
 
-安装依赖：
+## Runtime Config Split
+
+Two config files now serve different purposes:
+
+- [`public/app-config.json`](public/app-config.json)
+  UI-visible config only. Includes site branding, `apiBaseUrl`, enabled modules, and support contact info.
+- [`site-gateway/site-config.json`](site-gateway/site-config.json)
+  Local site runtime config. Includes `rosbridgeUrl`, role policy, session retention, and optional bootstrap users.
+
+The browser should no longer expose real ROS topology or front-end-side unlock policies.
+For field deployments, keep repository defaults generic, override the live rosbridge address with `SITE_ROSBRIDGE_URL` or the deployed `site-config.json`, and provide site-specific bootstrap passwords only during installation.
+
+## Local Development
+
+Install dependencies:
 
 ```powershell
 npm.cmd install
 ```
 
-开发模式：
+Run the site gateway in one terminal:
+
+```powershell
+npm.cmd run gateway:dev
+```
+
+Run the frontend dev server in another terminal:
 
 ```powershell
 npm.cmd run dev
 ```
 
-默认开发地址：
+Default local URLs:
 
-```text
-http://127.0.0.1:5173
-```
+- frontend: `http://127.0.0.1:5173`
+- site gateway: `http://127.0.0.1:4180`
 
-## Production Preview
+Vite proxies `/api/*` and `/ws/*` to the local site gateway during development.
 
-构建：
-
-```powershell
-npm.cmd run build
-```
-
-以现场静态托管方式启动：
-
-```powershell
-npm.cmd run start:prod
-```
-
-默认生产访问地址：
-
-```text
-http://127.0.0.1:4173
-```
-
-如果不希望启动脚本自动打开浏览器：
-
-```powershell
-$env:FRONTEND_NO_OPEN_BROWSER='1'
-```
-
-## Common Scripts
-
-- `npm.cmd run lint`
-- `npm.cmd run test`
-- `npm.cmd run typecheck`
-- `npm.cmd run build`
-- `npm.cmd run verify`
-- `npm.cmd run test:e2e`
-- `npm.cmd run serve:prod`
-- `npm.cmd run start:prod`
-
-当前 `verify` 会执行：
-
-1. `lint`
-2. `test`
-3. `build`
-
-## Configuration
-
-前端启动时会加载并校验 [`public/app-config.json`](public/app-config.json)。
-
-关键字段包括：
-
-- `siteName`
-- `robotId`
-- `rosbridgeUrl`
-- `quickRosbridgeUrls`
-- `enabledModules`
-- `rolePolicy`
-- `engineerUnlockMode`
-- `logRetentionDays`
-
-当前试点约束：
-
-- `engineerPasscode` 已移除
-- 前端不再校验浏览器可见口令
-- `engineerUnlockMode` 当前只保留 `direct`
-- 配置错误会在启动阶段阻断进入业务页
-
-环境变量模板见 [`.env.example`](.env.example)。本仓库默认忽略 `.env.*`，避免把本机环境文件直接提交到版本库。
-
-## Field Operation
-
-现场 Windows 启停脚本：
-
-- [`start-frontend.cmd`](start-frontend.cmd)
-- [`stop-frontend.cmd`](stop-frontend.cmd)
-- [`start-frontend-prod.cmd`](start-frontend-prod.cmd)
-- [`stop-frontend-prod.cmd`](stop-frontend-prod.cmd)
-
-## Project Structure
-
-```text
-src/
-  api/                ROS 与 gateway 封装
-  components/         可复用页面组件
-  config/             配置加载与 schema 校验
-  features/           任务/调度等领域模块
-  hooks/              连接与查询 hooks
-  pages/              页面容器
-  stores/             Zustand 状态管理
-  types/              类型定义
-  utils/              工具函数
-public/
-  app-config.json     现场配置
-scripts/
-  serve-dist.mjs      生产静态托管器
-tests/
-  e2e/                Playwright smoke
-docs/                 交付、验收、联调留档
-```
-
-## Acceptance And Testing
-
-建议交付前至少执行：
+## Verification
 
 ```powershell
 npm.cmd run verify
 npm.cmd run test:e2e
 ```
 
+`verify` runs:
+
+1. `lint`
+2. `audit:legacy`
+3. `test`
+4. `build`
+5. `audit:production`
+
+`audit:legacy` protects current pages, current docs, and formal gateway-facing layers from reintroducing legacy service names, stale sample addresses, or compatibility wording that belongs only in bottom-layer boundaries.
+
+`audit:production` runs after `build` and checks `dist/` plus current delivery docs/config for test chunks, test-framework markers, stale live IPs, old endpoint wording, and other release-package residue.
+
+## Workspace Cleanup
+
+Remove generated local artifacts:
+
+```powershell
+npm.cmd run clean:workspace
+```
+
+Also remove local release backups:
+
+```powershell
+npm.cmd run clean:workspace:deep
+```
+
+Remove generated release bundles as well:
+
+```powershell
+npm.cmd run clean:workspace:release
+```
+
+## Trial Packaging
+
+Build a field-delivery bundle:
+
+```powershell
+npm.cmd run package:trial
+```
+
+This produces a release directory like:
+
+```text
+release/clean-robot-site-v0.0.0/
+```
+
+The packaged bundle includes:
+
+- built `dist/`
+- editable `public/app-config.json`
+- `site-gateway/`
+- `scripts/`
+- `package.json` and `package-lock.json`
+- start/stop scripts
+- deployment and troubleshooting docs
+- `RELEASE-INFO.json`
+
+## Production Startup
+
+From a packaged release directory:
+
+```powershell
+npm.cmd install --omit=dev
+.\start-frontend-prod.cmd
+```
+
+Default entry URL:
+
+```text
+http://127.0.0.1:4173
+```
+
+Stop the site:
+
+```powershell
+.\stop-frontend-prod.cmd
+```
+
+Set `FRONTEND_NO_OPEN_BROWSER=1` to suppress automatic browser launch.
+
+## Windows Service Installation
+
+The release bundle now contains WinSW-oriented service scripts.
+
+Seed the WinSW executable once and install the service:
+
+```powershell
+.\scripts\install-site-service.ps1 -WinSwExePath C:\path\to\WinSW.exe
+```
+
+Set field-specific runtime overrides at install time when needed:
+
+```powershell
+.\scripts\install-site-service.ps1 -WinSwExePath C:\path\to\WinSW.exe -RosbridgeUrl ws://<robot-host>:9090
+```
+
+Uninstall the service:
+
+```powershell
+.\scripts\uninstall-site-service.ps1
+```
+
+Notes:
+
+- the WinSW binary itself is not committed into the repository
+- the install script copies that binary into the release `service/` directory
+- the generated service runs `site-gateway/server.mjs` directly with Node.js
+
+## Upgrade And Rollback
+
+Upgrade an installed site using a new packaged release:
+
+```powershell
+.\scripts\upgrade-site-release.ps1 -InstallRoot C:\CleanRobot\site
+```
+
+Rollback to the latest backup:
+
+```powershell
+.\scripts\rollback-site-release.ps1 -InstallRoot C:\CleanRobot\site
+```
+
+The upgrade script:
+
+- stops the existing service
+- backs up the current installed release
+- copies the new release into the install root
+- restores or reuses the WinSW wrapper
+- starts the site service again
+
+## Current Commercialization Status
+
+This repository now has:
+
+- a local site gateway with session login, audit persistence, diagnostics export, and rosbridge proxying
+- frontend session-driven role/capability rendering
+- high-risk write paths moved behind gateway APIs
+- a releasable trial package flow
+- Windows production start/stop scripts aligned to the site gateway
+- WinSW service installation scripts
+- packaged upgrade and rollback scripts
+
+Still planned for later phases:
+
+- fuller gateway test coverage
+- more read-path migration off browser-side ROS subscriptions
+- stronger long-term SQLite/runtime hardening
+- multi-site and cloud platform capabilities
+
 ## Documentation
 
 - [DEPLOYMENT.md](DEPLOYMENT.md)
 - [现场验收清单.md](现场验收清单.md)
 - [故障排查手册.md](故障排查手册.md)
-- [docs/slam_frontend_live_acceptance_v1.md](docs/slam_frontend_live_acceptance_v1.md)
-- [docs/constraint_editor_acceptance_summary.md](docs/constraint_editor_acceptance_summary.md)
-
-## Current Boundaries
-
-- 当前更适合试点交付，不是量产级平台架构
-- 浏览器仍直接连接 `rosbridge`
-- 审计与部分运行数据仍以前端本地留痕为主
-- 若进入规模化商用阶段，建议增加站点侧 gateway / BFF
-
-## Repository Notes
-
-- 当前仓库保留了现场试点配置和联调文档
-- 如果后续要长期公开维护，建议再做一轮脱敏、文档整理和示例配置抽离
+- [docs/README.md](docs/README.md)

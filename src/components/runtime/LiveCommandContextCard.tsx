@@ -12,7 +12,19 @@ function isRecord(value: unknown): value is JsonRecord {
 }
 
 function getStringTopicValue(value: unknown) {
-  return isRecord(value) && typeof value.data === 'string' ? value.data : '--'
+  if (!isRecord(value)) {
+    return '--'
+  }
+
+  if (typeof value.data === 'string' && value.data.trim().length > 0) {
+    return value.data
+  }
+
+  if (typeof value.state === 'string' && value.state.trim().length > 0) {
+    return value.state
+  }
+
+  return '--'
 }
 
 function formatNumber(value: unknown, digits = 1) {
@@ -48,9 +60,9 @@ export function LiveCommandContextCard({
     ? topicMap.runProgress.rawMessage
     : null
   const currentTaskLabel = selectedTask
-    ? `${selectedTask.id} · ${selectedTask.name}`
+    ? `${selectedTask.name} / #${selectedTask.id}`
     : focusedTaskId !== null && focusedTaskName
-      ? `${focusedTaskId} · ${focusedTaskName}`
+      ? `${focusedTaskName} / #${focusedTaskId}`
       : focusedTaskId !== null
         ? String(focusedTaskId)
         : '--'
@@ -63,7 +75,7 @@ export function LiveCommandContextCard({
             {focusedTaskId ?? '--'}
           </Typography.Text>
         </Descriptions.Item>
-        <Descriptions.Item label="当前页任务">
+        <Descriptions.Item label="当前页面任务">
           <Typography.Text data-testid="shared-current-page-task">
             {currentTaskLabel}
           </Typography.Text>

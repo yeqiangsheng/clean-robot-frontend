@@ -1,127 +1,225 @@
-# 清洁机器人前端试点部署说明
+# 清洁机器人站点前端部署说明
 
-## 目标范围
+## 1. 部署目标
 
-本仓库当前交付目标为“现场单机 Windows 试点部署”。
-默认要求是：
+当前交付目标已经升级为“前端 + 本地站点网关”的单站点 Windows 商用落地形态。
 
-- 前端可执行 `verify`
-- 前端可构建为 `dist`
-- 前端可由本地静态服务托管
-- 前端可在 mock 和 live 两种模式下完成基础验收
+正式运行链路：
 
-## 前置条件
+`浏览器 -> 本地 Site Gateway -> ROS / rosbridge / 机器人服务`
 
-- Windows 10/11
-- Node.js 20+
-- `npm.cmd`
-- 现场 live 联调时可访问 rosbridge，例如 `ws://127.0.0.1:9090`
+## 2. 发布包生成
 
-## 本地配置
-
-部署前先检查 [public/app-config.json](/c:/work/clean-robot-frontend/public/app-config.json)。
-
-当前试点约束：
-
-- `engineerPasscode` 已移除，前端不再校验浏览器可见口令
-- `engineerUnlockMode` 只允许 `direct`
-- `rosbridgeUrl` 和 `quickRosbridgeUrls` 必须是合法 `ws://` 或 `wss://`
-- 配置字段缺失、类型错误或 URL 非法时，前端会在启动阶段阻断进入业务页
-
-## 发布前验证
-
-在仓库根目录执行：
+在源码仓库执行：
 
 ```powershell
 npm.cmd install
-npm.cmd run verify
-npm.cmd run test:e2e
+npm.cmd run package:trial
+```
+
+发布产物会生成在：
+
+```text
+release/clean-robot-site-v0.0.0
+```
+
+发布目录至少包含：
+
+- `dist/`
+- `public/app-config.json`
+- `site-gateway/`
+- `scripts/`
+- `package.json`
+- `package-lock.json`
+- `start-frontend-prod.cmd`
+- `stop-frontend-prod.cmd`
+- `RELEASE-INFO.json`
+- `DEPLOYMENT.md`
+- `现场验收清单.md`
+- `故障排查手册.md`
+
+## 3. 配置边界
+
+### `public/app-config.json`
+
+这是浏览器可见的 UI 配置，只允许放这些内容：
+
+- `siteName`
+- `robotId`
+- `apiBaseUrl`
+- `enabledModules`
+- 支持联系人信息
+
+不再在这里暴露：
+
+- `rosbridgeUrl`
+- `quickRosbridgeUrls`
+- `rolePolicy`
+- `engineerUnlockMode`
+- 浏览器可见口令
+
+### `site-gateway/site-config.json`
+
+这是站点网关本地运行配置，负责：
+
+- `rosbridgeUrl`
+- 角色能力策略
+- 会话时长
+- 审计保留天数
+- 首次引导账号
+
+## 4. 首次安装
+
+进入发布目录后执行：
+
+```powershell
+npm.cmd install --omit=dev
 ```
 
 说明：
 
-- `verify` 会执行 `lint`、`vitest`、`typecheck`、`build`
-- `test:e2e` 使用 mock 模式启动开发服务器，并执行基础 smoke
+- 生产启动不再自动执行 `verify`
+- 生产机不需要安装 dev 依赖
+- `dist` 必须由发布包提前带好
 
-## 生产启动
-
-推荐使用仓库内脚本：
+## 5. 手动启动站点
 
 ```powershell
 .\start-frontend-prod.cmd
 ```
 
-如需在自动化环境中避免弹出浏览器：
+默认访问地址：
+
+```text
+http://127.0.0.1:4173
+```
+
+如需禁止自动弹浏览器：
 
 ```powershell
 $env:FRONTEND_NO_OPEN_BROWSER='1'
 .\start-frontend-prod.cmd
 ```
 
-默认服务地址：
-
-- `http://127.0.0.1:4173`
-
-脚本行为：
-
-- 先执行 `npm.cmd run verify`
-- 使用 [scripts/serve-dist.mjs](/c:/work/clean-robot-frontend/scripts/serve-dist.mjs) 托管 `dist`
-- 执行端口检查和健康检查
-- 写入 PID 文件，便于停止脚本回收
-
-## 停止服务
+停止站点：
 
 ```powershell
 .\stop-frontend-prod.cmd
 ```
 
-## 日志与运行文件
+## 6. 安装为 Windows 服务
 
-生产脚本相关文件位于：
+发布包已经内置 WinSW 服务安装脚本，但 WinSW 二进制需要现场提供一次。
+
+示例：
+
+```powershell
+.\scripts\install-site-service.ps1 -WinSwExePath C:\path\to\WinSW.exe
+```
+
+如果现场 ROS 不在本机，可在安装服务时写入运行环境变量：
+
+```powershell
+.\scripts\install-site-service.ps1 -WinSwExePath C:\path\to\WinSW.exe -RosbridgeUrl ws://<robot-host>:9090
+```
+
+安装脚本会：
+
+- 检查发布目录是否完整
+- 检查 Node.js 可执行路径
+- 生成 `service\clean-robot-site-service.xml`
+- 复制 WinSW 可执行文件到 `service\clean-robot-site-service.exe`
+- 安装并启动 `CleanRobotSiteGateway` 服务
+
+卸载服务：
+
+```powershell
+.\scripts\uninstall-site-service.ps1
+```
+
+## 7. 升级与回滚
+
+### 升级
+
+假设新发布包在 `D:\incoming\clean-robot-site-v0.0.1`，正式安装目录为 `C:\CleanRobot\site`：
+
+```powershell
+D:\incoming\clean-robot-site-v0.0.1\scripts\upgrade-site-release.ps1 -InstallRoot C:\CleanRobot\site
+```
+
+升级脚本会：
+
+1. 停止当前服务
+2. 备份当前安装目录到 `backups/`
+3. 复制新发布包到安装目录
+4. 恢复或重用原有 WinSW 包装器
+5. 重新安装并启动站点服务
+
+### 回滚
+
+```powershell
+.\scripts\rollback-site-release.ps1 -InstallRoot C:\CleanRobot\site
+```
+
+默认会回滚到最新一份 `site-backup-*` 备份目录。也可以用 `-BackupName` 指定具体版本。
+
+## 8. 日志与健康检查
+
+默认日志位置：
 
 - `.tmp/frontend-prod/frontend.out.log`
 - `.tmp/frontend-prod/frontend.err.log`
 - `.tmp/frontend-prod/frontend.pid`
 
-## Mock / Live 切换
+健康检查接口：
 
-### Mock 验收
+- `http://127.0.0.1:4173/api/health`
 
-用于无 ROS 后端时的页面级验收：
+健康接口会返回：
+
+- 站点版本
+- 站点名称
+- 机器人编号
+- 当前 ROS 连接状态
+
+## 9. 首次账号初始化
+
+如果本地 SQLite 用户表为空，站点网关会按部署环境 `site-config.json` 中的 `bootstrapUsers` 初始化账号。仓库默认配置不带可登录的初始密码；现场安装时必须写入站点专属强密码，禁止使用 `change-me*` 之类占位值。
+
+默认建议保留四类角色：
+
+- `operator`
+- `service`
+- `engineer`
+- `admin`
+
+现场交付后应立即修改默认密码。
+
+如需连接现场 ROS，请在部署配置或启动环境中设置 `SITE_ROSBRIDGE_URL`，不要把某个临时联调 IP 固化进源码发布包。
+
+## 10. 发布前验证
+
+源码仓库中至少执行：
 
 ```powershell
-npm.cmd run dev -- --mode test --host 127.0.0.1 --port 4174
+npm.cmd run verify
+npm.cmd run test:e2e
 ```
 
-`.env.test` 已启用：
+当前基线要求：
 
-- `VITE_USE_MOCK_DATA=true`
+- `lint` 通过
+- `typecheck` 通过
+- `build` 通过
+- `verify` 通过
+- mock smoke 通过
 
-### Live 联调
+## 11. 当前限制
 
-live 模式使用真实 rosbridge，重点检查：
+这版已经适合“单站点 Windows 商用落地第一阶段”，但还不是最终平台形态。
 
-- 连接
-- 断开
-- 重连
-- 页面反馈
-- 审计记录
-- 诊断包导出
+当前仍保留的过渡项：
 
-## 回滚建议
-
-现场建议保留上一版完整发布目录，至少包含：
-
-- `dist`
-- `public/app-config.json`
-- `package.json`
-- `package-lock.json`
-- 启停脚本
-
-回滚步骤：
-
-1. 停止当前前端服务。
-2. 恢复上一版发布目录。
-3. 执行 `npm.cmd install`。
-4. 执行 `npm.cmd run verify`。
-5. 重新运行 `.\start-frontend-prod.cmd`。
+- 部分只读运行态还复用浏览器侧 ROS 订阅，但已经统一改走本地 `/ws/rosbridge` 代理
+- WinSW 二进制仍需现场提供，不直接放进仓库
+- 多站点、云端账号体系、远程运维暂未引入

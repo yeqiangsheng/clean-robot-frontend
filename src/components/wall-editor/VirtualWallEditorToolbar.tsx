@@ -1,5 +1,7 @@
-import { Alert, Button, Card, Empty, Space, Tag, Typography } from 'antd'
+import { Button, Card, Space, Tag, Typography } from 'antd'
 
+import { AppEmptyState } from '../feedback/AppEmptyState'
+import { AppFeedbackBanner } from '../feedback/AppFeedbackBanner'
 import type { ConstraintEditorMode, Point2D } from '../../types/map-editor'
 
 interface VirtualWallEditorToolbarProps {
@@ -15,7 +17,7 @@ interface VirtualWallEditorToolbarProps {
 
 function formatPoint(point: Point2D | undefined) {
   if (!point) {
-    return 'Pending'
+    return '待选择'
   }
 
   return `(${point.x.toFixed(2)}, ${point.y.toFixed(2)})`
@@ -36,33 +38,29 @@ export function VirtualWallEditorToolbar({
 
   return (
     <Card
-      title="Virtual Wall Editor"
+      title="虚拟墙编辑"
       className="workbench-card"
       extra={
         isEditing ? (
-          <Tag color="processing">Editing</Tag>
+          <Tag color="processing">编辑中</Tag>
         ) : isCreating ? (
-          <Tag color="blue">Creating</Tag>
+          <Tag color="blue">新建中</Tag>
         ) : (
-          <Tag>Idle</Tag>
+          <Tag>空闲</Tag>
         )
       }
     >
       {!hasMap ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="Load a map or map workspace before creating a virtual wall."
-        />
+        <AppEmptyState description="请先加载地图或工作区图层，再开始创建虚拟墙。" />
       ) : null}
 
       {hasMap && !isCreating && !isEditing ? (
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <Typography.Paragraph className="workbench-footnote zone-editor-note">
-            This tool currently supports two-point virtual walls. The canvas draft represents the
-            display path and buffer preview used before saving.
+            当前工具使用两点虚拟墙模型。画布草稿展示的是保存前的路径和缓冲预览。
           </Typography.Paragraph>
           <Button type="primary" onClick={onStart} disabled={disableStart}>
-            Create virtual wall
+            新建虚拟墙
           </Button>
         </Space>
       ) : null}
@@ -70,38 +68,35 @@ export function VirtualWallEditorToolbar({
       {hasMap && (isCreating || isEditing) ? (
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           {lastError ? (
-            <Alert
-              showIcon
-              type="error"
-              title={isEditing ? 'Failed to save virtual wall' : 'Failed to create virtual wall'}
+            <AppFeedbackBanner
+              tone="error"
+              title={isEditing ? '虚拟墙保存失败' : '虚拟墙创建失败'}
               description={lastError}
               className="zone-editor-alert"
             />
           ) : null}
 
           <div className="zone-editor-status">
-            <Typography.Text strong>
-              {isEditing ? 'Editing virtual wall' : 'Creating virtual wall'}
-            </Typography.Text>
+            <Typography.Text strong>{isEditing ? '正在编辑虚拟墙' : '正在新建虚拟墙'}</Typography.Text>
             <Typography.Text type="secondary">
               {isEditing
-                ? 'Drag the two endpoints on the canvas, then save when the updated path is correct.'
+                ? '请在画布上拖拽两个端点，确认路径合适后再保存。'
                 : points.length === 0
-                  ? 'Pick the first endpoint on the canvas.'
-                  : 'Pick the second endpoint to finish the local wall draft.'}
+                  ? '请先在画布上选择第一个端点。'
+                  : '请再选择第二个端点，完成本次虚拟墙草稿。'}
             </Typography.Text>
             {!isEditing ? (
               <Typography.Text code>
-                Point 1 {formatPoint(points[0])}
+                点 1 {formatPoint(points[0])}
                 {'  '}
-                Point 2 {formatPoint(points[1])}
+                点 2 {formatPoint(points[1])}
               </Typography.Text>
             ) : null}
           </div>
 
           <Space wrap>
             <Button onClick={onCancel} disabled={isBusy}>
-              Cancel
+              取消
             </Button>
           </Space>
         </Space>

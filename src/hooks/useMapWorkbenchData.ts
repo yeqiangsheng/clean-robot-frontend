@@ -31,8 +31,7 @@ function resolveFallbackMapName(
 }
 
 export function useMapWorkbenchData(connection: RosConnectionSnapshot) {
-  const servicesReady =
-    USE_MOCK_DATA || connection.isConnected || connection.status === 'mock'
+  const servicesReady = USE_MOCK_DATA || connection.status !== 'connecting'
 
   const mapQuery = useQuery({
     queryKey: ['workbench', 'map', connection.url, connection.sessionId, USE_MOCK_DATA],
@@ -43,6 +42,8 @@ export function useMapWorkbenchData(connection: RosConnectionSnapshot) {
     staleTime: 15_000,
   })
 
+  const workbenchMapReady = Boolean(mapQuery.data)
+
   const zonesQuery = useQuery({
     queryKey: [
       'workbench',
@@ -52,7 +53,7 @@ export function useMapWorkbenchData(connection: RosConnectionSnapshot) {
       USE_MOCK_DATA,
     ],
     queryFn: () => fetchCoverageZones(mapQuery.data ?? null),
-    enabled: servicesReady,
+    enabled: servicesReady && workbenchMapReady,
     retry: false,
     staleTime: 15_000,
   })
@@ -66,7 +67,7 @@ export function useMapWorkbenchData(connection: RosConnectionSnapshot) {
       USE_MOCK_DATA,
     ],
     queryFn: () => fetchNoGoAreas(mapQuery.data ?? null),
-    enabled: servicesReady,
+    enabled: servicesReady && workbenchMapReady,
     retry: false,
     staleTime: 15_000,
   })
@@ -80,7 +81,7 @@ export function useMapWorkbenchData(connection: RosConnectionSnapshot) {
       USE_MOCK_DATA,
     ],
     queryFn: () => fetchVirtualWalls(mapQuery.data ?? null),
-    enabled: servicesReady,
+    enabled: servicesReady && workbenchMapReady,
     retry: false,
     staleTime: 15_000,
   })
@@ -104,7 +105,7 @@ export function useMapWorkbenchData(connection: RosConnectionSnapshot) {
       USE_MOCK_DATA,
     ],
     queryFn: () => fetchActiveAlignment(mapQuery.data ?? null, fallbackMapName),
-    enabled: servicesReady && Boolean(mapQuery.data || fallbackMapName),
+    enabled: servicesReady && workbenchMapReady,
     retry: false,
     staleTime: 15_000,
   })
@@ -112,20 +113,8 @@ export function useMapWorkbenchData(connection: RosConnectionSnapshot) {
   const warnings = useMemo(() => {
     const nextWarnings: string[] = []
 
-    if (alignmentQuery.error) {
-      nextWarnings.push(
-        'Alignment status failed to load, but the workbench can still continue in raw map coordinates.',
-      )
-    }
-
     if (mapQuery.error && (zonesQuery.data?.length || noGoAreasQuery.data?.length || virtualWallsQuery.data?.length)) {
       nextWarnings.push('Base map metadata failed to load, but drawable layers are still available in their display frame.')
-    }
-
-    if (mapQuery.data && alignmentQuery.data === null && !alignmentQuery.error) {
-      nextWarnings.push(
-        'No active alignment is enabled. The workbench is currently using raw map coordinates.',
-      )
     }
 
     if (zonesQuery.error) {
@@ -152,8 +141,6 @@ export function useMapWorkbenchData(connection: RosConnectionSnapshot) {
 
     return nextWarnings
   }, [
-    alignmentQuery.data,
-    alignmentQuery.error,
     mapQuery.data,
     mapQuery.error,
     noGoAreasQuery.data,
@@ -194,8 +181,8 @@ export function useMapWorkbenchData(connection: RosConnectionSnapshot) {
     mapError: mapQuery.error instanceof Error ? mapQuery.error : null,
     mapQueryFetchStatus: mapQuery.fetchStatus,
     mapQueryStatus: mapQuery.status,
-    alignmentError:
-      alignmentQuery.error instanceof Error ? alignmentQuery.error : null,
+    zonesQueryFetchStatus: zonesQuery.fetchStatus,
+    zonesQueryStatus: zonesQuery.status,
     zonesError: zonesQuery.error instanceof Error ? zonesQuery.error : null,
     noGoAreasError:
       noGoAreasQuery.error instanceof Error ? noGoAreasQuery.error : null,

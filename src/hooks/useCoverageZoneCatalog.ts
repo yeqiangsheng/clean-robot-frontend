@@ -94,7 +94,7 @@ export function useCoverageZoneCatalog({
   selectedZoneIds = [],
 }: UseCoverageZoneCatalogOptions) {
   const { snapshot } = useRosConnection()
-  const servicesReady = snapshot.isConnected || snapshot.status === 'mock'
+  const servicesReady = snapshot.status !== 'connecting'
   const normalizedMapName = mapName?.trim() ?? ''
   const normalizedSelectedZoneIds = useMemo(
     () =>

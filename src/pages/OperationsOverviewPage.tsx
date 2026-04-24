@@ -1,15 +1,6 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 
-import {
-  Alert,
-  Button,
-  Card,
-  Descriptions,
-  Empty,
-  Space,
-  Tag,
-  Typography,
-} from 'antd'
+import { Button, Card, Descriptions, Space, Tag, Typography } from 'antd'
 import {
   AuditOutlined,
   DeploymentUnitOutlined,
@@ -19,13 +10,21 @@ import {
 } from '@ant-design/icons'
 
 import { exportDiagnostics } from '../api/gateway/robotGateway'
+import { AppEmptyState } from '../components/feedback/AppEmptyState'
+import { AppFeedbackBanner } from '../components/feedback/AppFeedbackBanner'
 import { getAppConfig } from '../config/appConfig'
 import { RosbridgeEndpointControl } from '../components/ros/RosbridgeEndpointControl'
 import { useGatewayCapabilities } from '../hooks/useGatewayCapabilities'
 import { useRosConnection } from '../hooks/useRosConnection'
 import { useAppShellStore } from '../stores/appShellStore'
 import { useRuntimeMonitorStore } from '../stores/runtimeMonitorStore'
-import type { CapabilityStatusItem } from '../types/appShell'
+import type { CapabilityStatusItem, UserRole } from '../types/appShell'
+import {
+  STATION_STATUS_NON_BLOCKING_DESCRIPTION,
+  STATION_STATUS_NON_BLOCKING_TITLE,
+  getStationStatusTag,
+  isStationStatusNonBlocking,
+} from '../utils/stationStatus'
 import './OperationsOverviewPage.css'
 
 type JsonRecord = Record<string, unknown>
@@ -47,16 +46,18 @@ function getConnectionTag(status: string) {
     case 'closed':
       return { color: 'warning', label: '已断开' }
     default:
-      return { color: 'default', label: '空闲' }
+      return { color: 'default', label: '未连接' }
   }
 }
 
-function getRoleLabel(role: string) {
+function getRoleLabel(role: UserRole) {
   switch (role) {
     case 'service':
-      return '售后'
+      return '服务'
     case 'engineer':
       return '工程师'
+    case 'admin':
+      return '管理员'
     default:
       return '操作员'
   }
@@ -64,6 +65,8 @@ function getRoleLabel(role: string) {
 
 function getCategoryLabel(category: string) {
   switch (category) {
+    case 'auth':
+      return '认证'
     case 'charging':
       return '充电'
     case 'slam':
@@ -86,7 +89,7 @@ function getCapabilityTag(item: CapabilityStatusItem) {
     case 'missing':
       return { color: 'error', label: '缺失' }
     case 'disabled':
-      return { color: 'default', label: '已禁用' }
+      return { color: 'default', label: '未开放' }
     default:
       return { color: 'processing', label: '检查中' }
   }
@@ -132,7 +135,21 @@ function getStringField(topic: unknown, key: string) {
   }
 
   const value = topic[key]
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : '--'
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value.trim()
+  }
+
+  const fallbackValue = key === 'data' ? topic.state : topic.data
+  if (typeof fallbackValue === 'string' && fallbackValue.trim().length > 0) {
+    return fallbackValue.trim()
+  }
+
+  const stateValue = topic.state
+  if (typeof stateValue === 'string' && stateValue.trim().length > 0) {
+    return stateValue.trim()
+  }
+
+  return '--'
 }
 
 function getBatteryTopicMetrics(rawMessage: unknown) {
@@ -165,17 +182,17 @@ function downloadJson(filename: string, payload: unknown) {
 
 export function OperationsOverviewPage() {
   const config = getAppConfig()
-  const { snapshot, defaultUrl, quickUrls, connect } = useRosConnection()
+  const { snapshot, defaultUrl, connect } = useRosConnection()
   const { capabilityMap, error, isFetching } = useGatewayCapabilities()
   const currentRole = useAppShellStore((state) => state.currentRole)
-  const engineerUnlocked = useAppShellStore((state) => state.engineerUnlocked)
+  const currentUser = useAppShellStore((state) => state.currentUser)
   const auditEvents = useAppShellStore((state) => state.auditEvents)
-  const clearAuditEvents = useAppShellStore((state) => state.clearAuditEvents)
   const topicMap = useRuntimeMonitorStore((state) => state.topicMap)
   const [exportError, setExportError] = useState<string | null>(null)
   const [exportingDiagnostics, setExportingDiagnostics] = useState(false)
 
   const batteryMetrics = getBatteryTopicMetrics(topicMap.batteryState.rawMessage)
+  const stationStatusTag = getStationStatusTag(topicMap.stationStatus)
   const capabilityItems = Object.values(capabilityMap).sort((left, right) =>
     left.title.localeCompare(right.title, 'zh-CN'),
   )
@@ -201,19 +218,20 @@ export function OperationsOverviewPage() {
         <div>
           <Typography.Title level={2}>运行总览</Typography.Title>
           <Typography.Paragraph>
-            这是 Windows 试点部署的默认落地页。可在此核对本地配置、rosbridge 连接、能力状态、审计记录，并导出便于现场支持的诊断包。
+            这里汇总站点 Gateway、现场 ROS 会话、能力探测、最近审计和运行态反馈。
+            业务主路径已经改为站点 Gateway 持有热数据，浏览器只消费站点读模型。
           </Typography.Paragraph>
         </div>
         <Space size="middle" wrap>
           <Tag color="gold">{config.siteName}</Tag>
           <Tag color={connectionTag.color}>{connectionTag.label}</Tag>
-          <Tag color={engineerUnlocked ? 'purple' : 'default'}>
-            角色：{getRoleLabel(currentRole)}
+          <Tag color={currentRole === 'engineer' || currentRole === 'admin' ? 'purple' : 'blue'}>
+            {getRoleLabel(currentRole)}
           </Tag>
+          {currentUser ? <Tag>{currentUser.displayName}</Tag> : null}
           <RosbridgeEndpointControl
             snapshot={snapshot}
             defaultUrl={defaultUrl}
-            quickUrls={quickUrls}
             onConnect={connect}
           />
           <Button
@@ -229,19 +247,17 @@ export function OperationsOverviewPage() {
       </header>
 
       {!snapshot.isConnected && snapshot.status !== 'mock' ? (
-        <Alert
-          showIcon
-          type="warning"
-          title="ROS 未连接"
-          description="壳层仍可打开，但在 rosbridge 连通前，能力探测和实时运行快照会受到限制。"
+        <AppFeedbackBanner
+          tone="warning"
+          title="ROS 尚未连接"
+          description="页面仍可打开，但在站点 Gateway 恢复 ROS 会话前，能力探测和实时快照会受到限制。"
           className="overview-banner"
         />
       ) : null}
 
       {error ? (
-        <Alert
-          showIcon
-          type="warning"
+        <AppFeedbackBanner
+          tone="warning"
           title="能力探测失败"
           description={error.message}
           className="overview-banner"
@@ -249,11 +265,19 @@ export function OperationsOverviewPage() {
       ) : null}
 
       {exportError ? (
-        <Alert
-          showIcon
-          type="error"
+        <AppFeedbackBanner
+          tone="error"
           title="诊断包导出失败"
           description={exportError}
+          className="overview-banner"
+        />
+      ) : null}
+
+      {isStationStatusNonBlocking(topicMap.stationStatus) ? (
+        <AppFeedbackBanner
+          tone="warning"
+          title={STATION_STATUS_NON_BLOCKING_TITLE}
+          description={STATION_STATUS_NON_BLOCKING_DESCRIPTION}
           className="overview-banner"
         />
       ) : null}
@@ -261,17 +285,20 @@ export function OperationsOverviewPage() {
       <div className="overview-grid">
         <section className="overview-column">
           <Card
-            title="本地配置"
+            title="站点配置"
             className="overview-card"
             extra={<SettingOutlined />}
           >
             <Descriptions column={1} size="small" colon={false}>
               <Descriptions.Item label="站点名称">{config.siteName}</Descriptions.Item>
-              <Descriptions.Item label="机器人标识">{config.robotId}</Descriptions.Item>
-              <Descriptions.Item label="默认 rosbridge">{config.rosbridgeUrl}</Descriptions.Item>
-              <Descriptions.Item label="当前连接地址">{snapshot.url || '--'}</Descriptions.Item>
-              <Descriptions.Item label="工程师模式">{config.engineerUnlockMode}</Descriptions.Item>
-              <Descriptions.Item label="日志保留天数">{config.logRetentionDays}</Descriptions.Item>
+              <Descriptions.Item label="机器人编号">{config.robotId}</Descriptions.Item>
+              <Descriptions.Item label="前端 API">{config.apiBaseUrl}</Descriptions.Item>
+              <Descriptions.Item label="ROS 上游地址">
+                {snapshot.url || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label="支持联系人">{config.supportName ?? '--'}</Descriptions.Item>
+              <Descriptions.Item label="支持电话">{config.supportPhone ?? '--'}</Descriptions.Item>
+              <Descriptions.Item label="支持邮箱">{config.supportEmail ?? '--'}</Descriptions.Item>
               <Descriptions.Item label="版本">{__APP_VERSION__}</Descriptions.Item>
               <Descriptions.Item label="构建时间">{__APP_BUILD_TIME__}</Descriptions.Item>
             </Descriptions>
@@ -294,6 +321,9 @@ export function OperationsOverviewPage() {
               </Descriptions.Item>
               <Descriptions.Item label="补给站状态">
                 {getStringField(topicMap.dockSupplyState.rawMessage, 'state')}
+              </Descriptions.Item>
+              <Descriptions.Item label="桩站状态">
+                <Tag color={stationStatusTag.color}>{stationStatusTag.label}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label="最近电池消息">
                 {formatDateTime(topicMap.batteryState.lastMessageAt)}
@@ -344,14 +374,13 @@ export function OperationsOverviewPage() {
           <Card
             title="最近审计记录"
             className="overview-card"
-            extra={
-              <Button size="small" onClick={clearAuditEvents}>
-                清空
-              </Button>
-            }
+            extra={<AuditOutlined />}
           >
             {auditEvents.length === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无近期高风险审计记录。" />
+              <AppEmptyState
+                title="暂无近期审计记录"
+                description="后续操作、阻断和放行动作都会显示在这里。"
+              />
             ) : (
               <div className="overview-list">
                 {auditEvents.slice(0, 12).map((item) => (
@@ -380,17 +409,15 @@ export function OperationsOverviewPage() {
 
           <Card title="运行提示" className="overview-card" extra={<AuditOutlined />}>
             <Space orientation="vertical" size="middle">
-              <Alert
-                showIcon
-                type="info"
-                title="默认视图面向安全值守"
-                description="任务、调度、运行监控和地图流程默认可见。SLAM 与执行机构工具需进入工程师模式后使用。"
+              <AppFeedbackBanner
+                tone="info"
+                title="权限与高风险命令已服务端化"
+                description="工程师能力、执行控制、SLAM 和执行机构调试现在统一经过本地站点 Gateway。浏览器不再承担真实认证职责。"
               />
-              <Alert
-                showIcon
-                type="warning"
-                title="高风险动作会写入本地审计日志"
-                description="执行控制、执行机构调试、充电控制和 SLAM 动作均会保存在本地，便于现场追溯。"
+              <AppFeedbackBanner
+                tone="success"
+                title="业务主路径已完成 Gateway 收口"
+                description="运行监控、SLAM、里程计、readiness、地图与任务主读链都已经改为站点 Gateway 快照。浏览器侧只保留少量 mock、诊断或兼容封装。"
               />
             </Space>
           </Card>

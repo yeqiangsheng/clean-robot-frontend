@@ -173,9 +173,31 @@
   flex-shrink: 0;
 }
 
+.slam-map-shell {
+  width: 100%;
+  height: 520px;
+  margin-top: 8px;
+}
+
 .slam-list-subtle {
   color: rgba(63, 76, 83, 0.72);
   font-size: 12px;
+}
+
+.slam-job-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.slam-job-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(119, 133, 138, 0.16);
+  background: rgba(255, 255, 255, 0.62);
 }
 
 .slam-danger-card {
@@ -209,8 +231,13 @@
   }
 
   .slam-status-metrics,
-  .slam-inline-grid {
+  .slam-inline-grid,
+  .slam-job-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .slam-map-shell {
+    height: 360px;
   }
 
   .slam-job-history-item {

@@ -3,16 +3,17 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { manageTask } from '../../api/gateway/robotGateway'
+import { getTaskDetailQueryKey, getTaskListQueryKey } from './taskQueryKeys'
 import type { RosConnectionSnapshot } from '../../types/ros'
 
 export function useTaskManagementData(
   snapshot: RosConnectionSnapshot,
   selectedTaskId: number | null,
 ) {
-  const servicesReady = snapshot.isConnected || snapshot.status === 'mock'
+  const servicesReady = snapshot.status !== 'connecting'
 
   const tasksQuery = useQuery({
-    queryKey: ['task-management', 'tasks', snapshot.url, snapshot.sessionId],
+    queryKey: getTaskListQueryKey(snapshot),
     queryFn: () => manageTask({ action: 'list' }),
     enabled: servicesReady,
     retry: false,
@@ -25,13 +26,7 @@ export function useTaskManagementData(
   )
 
   const detailQuery = useQuery({
-    queryKey: [
-      'task-management',
-      'task-detail',
-      selectedTaskId,
-      snapshot.url,
-      snapshot.sessionId,
-    ],
+    queryKey: getTaskDetailQueryKey(snapshot, selectedTaskId),
     queryFn: () => manageTask({ action: 'detail', taskId: selectedTaskId ?? 0 }),
     enabled: servicesReady && selectedTaskId !== null,
     retry: false,

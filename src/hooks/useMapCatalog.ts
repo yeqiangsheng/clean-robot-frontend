@@ -8,7 +8,7 @@ import type { MapCatalogEntry } from '../types/mapCatalog'
 
 export function useMapCatalog() {
   const { snapshot } = useRosConnection()
-  const servicesReady = snapshot.isConnected || snapshot.status === 'mock'
+  const servicesReady = snapshot.status !== 'connecting'
 
   const query = useQuery({
     queryKey: ['map-catalog', snapshot.url, snapshot.sessionId],

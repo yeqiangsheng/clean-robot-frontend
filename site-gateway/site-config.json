@@ -1,0 +1,64 @@
+{
+  "siteName": "清洁机器人商用站点",
+  "robotId": "local_robot",
+  "rosbridgeUrl": "ws://localhost:9090",
+  "enabledModules": {
+    "overview": true,
+    "workbench": true,
+    "tasks": true,
+    "schedules": true,
+    "execution": true,
+    "slam": true,
+    "runtime": true,
+    "actuator-control": true
+  },
+  "rolePolicy": {
+    "operator": [
+      "overview",
+      "taskManagement",
+      "scheduleManagement",
+      "executionControl",
+      "profileCatalog",
+      "systemReadiness"
+    ],
+    "service": [
+      "overview",
+      "mapWorkbench",
+      "taskManagement",
+      "scheduleManagement",
+      "executionControl",
+      "runtimeMonitoring",
+      "profileCatalog",
+      "systemReadiness"
+    ],
+    "engineer": [
+      "overview",
+      "mapWorkbench",
+      "taskManagement",
+      "scheduleManagement",
+      "executionControl",
+      "slamWorkbench",
+      "runtimeMonitoring",
+      "actuatorControl",
+      "chargingControl",
+      "profileCatalog",
+      "systemReadiness"
+    ],
+    "admin": [
+      "overview",
+      "mapWorkbench",
+      "taskManagement",
+      "scheduleManagement",
+      "executionControl",
+      "slamWorkbench",
+      "runtimeMonitoring",
+      "actuatorControl",
+      "chargingControl",
+      "profileCatalog",
+      "systemReadiness"
+    ]
+  },
+  "sessionTtlHours": 12,
+  "logRetentionDays": 14,
+  "mapImportPbstreamDir": "/opt/carto/map"
+}

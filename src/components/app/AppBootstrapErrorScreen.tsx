@@ -1,5 +1,6 @@
-import { Alert, Button, Space, Typography } from 'antd'
+import { Button, Space, Typography } from 'antd'
 
+import { AppFeedbackBanner } from '../feedback/AppFeedbackBanner'
 import type { AppConfigValidationIssue } from '../../types/appShell'
 
 interface AppBootstrapErrorScreenProps {
@@ -30,22 +31,22 @@ export function AppBootstrapErrorScreen({
         <Space orientation="vertical" size="large" style={{ width: '100%' }}>
           <div>
             <Typography.Title level={2} style={{ marginBottom: 8 }}>
-              Clean Robot Frontend
+              清洁机器人商用前端
             </Typography.Title>
             <Typography.Paragraph style={{ marginBottom: 0 }}>
-              Trial deployment startup validation stopped the app before the business pages were mounted.
+              启动校验在业务页面挂载前就拦下了应用，请先处理配置问题再继续。
             </Typography.Paragraph>
           </div>
 
-          <Alert
-            showIcon
-            type="error"
+          <AppFeedbackBanner
+            tone="error"
             title={title}
             description={
               <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
                 <Typography.Paragraph style={{ marginBottom: 0 }}>
                   {description}
                 </Typography.Paragraph>
+
                 {issues.length > 0 ? (
                   <div
                     style={{
@@ -73,8 +74,9 @@ export function AppBootstrapErrorScreen({
                     ))}
                   </div>
                 ) : null}
+
                 <Typography.Paragraph style={{ marginBottom: 0 }}>
-                  Check `public/app-config.json`, rebuild if needed, then reload the page.
+                  请检查 `public/app-config.json`，必要时重新构建，然后刷新页面。
                 </Typography.Paragraph>
               </Space>
             }
@@ -83,10 +85,10 @@ export function AppBootstrapErrorScreen({
           <Space>
             {onRetry ? (
               <Button type="primary" onClick={onRetry}>
-                Retry
+                重试
               </Button>
             ) : null}
-            <Button onClick={() => window.location.reload()}>Reload Page</Button>
+            <Button onClick={() => window.location.reload()}>刷新页面</Button>
           </Space>
         </Space>
       </div>

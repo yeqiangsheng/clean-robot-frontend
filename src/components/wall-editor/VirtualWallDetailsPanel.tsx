@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 
-import { Card, Descriptions, Empty, Tag, Typography } from 'antd'
+import { Card, Descriptions, Tag, Typography } from 'antd'
 
+import { AppEmptyState } from '../feedback/AppEmptyState'
 import type { AreaEntity } from '../../types/map-editor'
 import { formatNumber } from '../../utils/geometry'
 
@@ -93,10 +94,7 @@ export function VirtualWallDetailsPanel({
   if (!wall) {
     return (
       <Card title="虚拟墙详情" className="workbench-card">
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="请选择一条虚拟墙查看只读详情。"
-        />
+        <AppEmptyState description="请选择一条虚拟墙查看只读详情。" />
       </Card>
     )
   }
@@ -129,9 +127,7 @@ export function VirtualWallDetailsPanel({
             3,
           )}
         </Descriptions.Item>
-        <Descriptions.Item label="更新时间">
-          {formatTimestamp(wall.raw.updated_ts)}
-        </Descriptions.Item>
+        <Descriptions.Item label="更新时间">{formatTimestamp(wall.raw.updated_ts)}</Descriptions.Item>
       </Descriptions>
 
       {warnings.length > 0 ? (

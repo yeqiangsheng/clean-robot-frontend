@@ -2,10 +2,8 @@
 import type { ReactNode } from 'react'
 
 import {
-  Alert,
   Card,
   Descriptions,
-  Empty,
   Space,
   Tag,
   Typography,
@@ -16,6 +14,8 @@ import {
   ThunderboltOutlined,
 } from '@ant-design/icons'
 
+import { AppEmptyState } from '../components/feedback/AppEmptyState'
+import { AppFeedbackBanner } from '../components/feedback/AppFeedbackBanner'
 import { RosbridgeEndpointControl } from '../components/ros/RosbridgeEndpointControl'
 import { SystemReadinessCard } from '../components/readiness/SystemReadinessCard'
 import { LiveCommandContextCard } from '../components/runtime/LiveCommandContextCard'
@@ -23,6 +23,12 @@ import { useRosConnection } from '../hooks/useRosConnection'
 import { useExecutionSessionStore } from '../stores/executionSessionStore'
 import { useRuntimeMonitorStore } from '../stores/runtimeMonitorStore'
 import type { RuntimeTopicHealth, RuntimeTopicSnapshot } from '../types/runtime'
+import {
+  STATION_STATUS_NON_BLOCKING_DESCRIPTION,
+  STATION_STATUS_NON_BLOCKING_TITLE,
+  getStationStatusTag,
+  isStationStatusNonBlocking,
+} from '../utils/stationStatus'
 import './RuntimeMonitoringPage.css'
 
 type JsonRecord = Record<string, unknown>
@@ -34,17 +40,17 @@ function isRecord(value: unknown): value is JsonRecord {
 function getConnectionTag(status: string) {
   switch (status) {
     case 'connected':
-      return { color: 'success', label: 'Connected' }
+      return { color: 'success', label: '已连接' }
     case 'connecting':
-      return { color: 'processing', label: 'Connecting' }
+      return { color: 'processing', label: '连接中' }
     case 'error':
-      return { color: 'error', label: 'Error' }
+      return { color: 'error', label: '连接异常' }
     case 'mock':
-      return { color: 'purple', label: 'Mock Data' }
+      return { color: 'purple', label: 'Mock 数据' }
     case 'closed':
-      return { color: 'warning', label: 'Closed' }
+      return { color: 'warning', label: '连接关闭' }
     default:
-      return { color: 'default', label: 'Idle' }
+      return { color: 'default', label: '未连接' }
   }
 }
 
@@ -167,25 +173,23 @@ function TopicStateNote({
 }) {
   if (topic.health === 'disconnected') {
     return (
-      <Alert
-        showIcon
-        type="error"
-        title="rosbridge is disconnected"
-        description="Reconnect the frontend to resume live runtime subscriptions."
+      <AppFeedbackBanner
+        tone="error"
+        title="站点网关 ROS 会话已断开"
+        description="请先恢复站点网关 ROS 会话，再查看运行监控实时快照。"
       />
     )
   }
 
   if (topic.health === 'unavailable') {
     return (
-      <Alert
-        showIcon
-        type="warning"
-        title="Topic unavailable"
+      <AppFeedbackBanner
+        tone="warning"
+        title="Topic 暂不可用"
         description={
           topic.messageType
-            ? 'The topic has no active publisher on the live backend right now.'
-            : 'rosapi did not return a live topic type for this topic.'
+            ? '现场后端当前没有这个 topic 的活跃发布者。'
+            : '站点网关没有拿到这个 topic 的有效类型信息。'
         }
       />
     )
@@ -193,10 +197,9 @@ function TopicStateNote({
 
   if (topic.health === 'waiting') {
     return (
-      <Alert
-        showIcon
-        type="info"
-        title="Waiting for first message"
+      <AppFeedbackBanner
+        tone="info"
+        title="等待首帧"
         description={emptyMessage}
       />
     )
@@ -204,16 +207,34 @@ function TopicStateNote({
 
   if (topic.health === 'stale') {
     return (
-      <Alert
-        showIcon
-        type="warning"
-        title="Topic data is stale"
-        description="The frontend is still subscribed, but the last message is older than the expected cadence."
+      <AppFeedbackBanner
+        tone="warning"
+        title="Topic 数据已延迟"
+        description="站点网关仍在持有该 topic 快照，但最后一帧已经超过预期刷新周期。"
       />
     )
   }
 
   return null
+}
+
+function StationStatusNote({ topic }: { topic: RuntimeTopicSnapshot }) {
+  if (isStationStatusNonBlocking(topic)) {
+    return (
+      <AppFeedbackBanner
+        tone="warning"
+        title={STATION_STATUS_NON_BLOCKING_TITLE}
+        description={STATION_STATUS_NON_BLOCKING_DESCRIPTION}
+      />
+    )
+  }
+
+  return (
+    <TopicStateNote
+      topic={topic}
+      emptyMessage="站点网关正在等待 /station_status 的首帧。"
+    />
+  )
 }
 
 function TopicMetaSummary({
@@ -243,7 +264,7 @@ function TopicMetaSummary({
 }
 
 export function RuntimeMonitoringPage() {
-  const { snapshot, defaultUrl, quickUrls, connect } = useRosConnection()
+  const { snapshot, defaultUrl, connect } = useRosConnection()
   const focusedTaskId = useExecutionSessionStore((state) => state.focusedTaskId)
   const metaError = useRuntimeMonitorStore((state) => state.metaError)
   const topicList = useRuntimeMonitorStore((state) => state.topicList)
@@ -272,6 +293,7 @@ export function RuntimeMonitoringPage() {
   const executorStateValue = getStringTopicValue(executorStateTopic)
   const dockSupplyValue = getStringTopicValue(dockSupplyTopic)
   const stationStatusValue = getStringTopicValue(stationStatusTopic)
+  const stationStatusTag = getStationStatusTag(stationStatusTopic)
   const runProgress = getRunProgress(runProgressTopic)
   const batteryState = getBatteryState(batteryStateTopic)
   const combinedStatus = getCombinedStatus(combinedStatusTopic)
@@ -292,50 +314,50 @@ export function RuntimeMonitoringPage() {
           <RosbridgeEndpointControl
             snapshot={snapshot}
             defaultUrl={defaultUrl}
-            quickUrls={quickUrls}
             onConnect={handleReconnect}
           />
         </Space>
       </header>
 
       {snapshot.status === 'error' && snapshot.lastError ? (
-        <Alert
-          showIcon
-          type="error"
-          title="rosbridge 连接失败"
+        <AppFeedbackBanner
+          tone="error"
+          title="站点网关 ROS 连接失败"
           description={snapshot.lastError}
+          actionLabel="重连"
+          onAction={() => void handleReconnect()}
           className="runtime-banner"
         />
       ) : null}
 
       {snapshot.status === 'mock' ? (
-        <Alert
-          showIcon
-          type="info"
-          title="The page is using local mock data"
-          description="Set VITE_USE_MOCK_DATA=false in .env.development to connect to the live backend."
+        <AppFeedbackBanner
+          tone="info"
+          title="当前正在使用本地 Mock 数据"
+          description="如需切回现场站点网关，请在 .env.development 中设置 VITE_USE_MOCK_DATA=false。"
           className="runtime-banner"
         />
       ) : null}
 
       {metaError ? (
-        <Alert
-          showIcon
-          type="warning"
-          title="Some runtime topic metadata failed to load"
+        <AppFeedbackBanner
+          tone="warning"
+          title="部分 runtime topic 元数据加载失败"
           description={metaError}
+          actionLabel="重连"
+          onAction={() => void handleReconnect()}
           className="runtime-banner"
         />
       ) : null}
 
       <div className="runtime-grid">
         <aside className="runtime-column">
-          <LiveCommandContextCard title="Command Flow Context" />
+          <LiveCommandContextCard title="实时执行上下文" />
           <SystemReadinessCard
             snapshot={snapshot}
             taskId={focusedTaskId ?? 0}
             compact
-            title="System Readiness"
+            title="系统 readiness"
           />
 
           <Card
@@ -357,13 +379,13 @@ export function RuntimeMonitoringPage() {
 
               <TopicStateNote
                 topic={taskStateTopic}
-                emptyMessage="The frontend is subscribed and waiting for the task manager to publish its current state."
+                emptyMessage="站点网关正在等待任务管理器发布最新状态。"
               />
 
               {!taskEventValue && taskEventTopic.health !== 'live' ? (
                 <TopicStateNote
                   topic={taskEventTopic}
-                  emptyMessage="No task-manager event has been published during this frontend session yet."
+                  emptyMessage="当前站点会话里还没有收到新的 task-manager event。"
                 />
               ) : null}
 
@@ -402,7 +424,7 @@ export function RuntimeMonitoringPage() {
 
               <TopicStateNote
                 topic={executorStateTopic}
-                emptyMessage="The frontend is subscribed and waiting for the executor state topic."
+                emptyMessage="站点网关正在等待执行器状态 topic 的首帧。"
               />
 
               <TopicMetaSummary topic={executorStateTopic} />
@@ -510,11 +532,11 @@ export function RuntimeMonitoringPage() {
               <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
                 <TopicStateNote
                   topic={runProgressTopic}
-                  emptyMessage="The frontend is subscribed and waiting for `/coverage_executor/run_progress`."
+                  emptyMessage="站点网关正在等待 /coverage_executor/run_progress 的首帧。"
                 />
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="Run progress fields will appear here after the first live message."
+                <AppEmptyState
+                  title="尚未收到 run progress"
+                  description="收到首条实时 run progress 后，这里会展示完整字段。"
                 />
               </Space>
             )}
@@ -595,7 +617,7 @@ export function RuntimeMonitoringPage() {
                 ) : (
                   <TopicStateNote
                     topic={batteryStateTopic}
-                    emptyMessage="The frontend is subscribed and waiting for `/battery_state`."
+                    emptyMessage="站点网关正在等待 /battery_state 的首帧。"
                   />
                 )}
               </Card>
@@ -643,7 +665,7 @@ export function RuntimeMonitoringPage() {
                 ) : (
                   <TopicStateNote
                     topic={combinedStatusTopic}
-                    emptyMessage="The frontend is subscribed and waiting for `/combined_status`."
+                    emptyMessage="站点网关正在等待 /combined_status 的首帧。"
                   />
                 )}
               </Card>
@@ -675,7 +697,7 @@ export function RuntimeMonitoringPage() {
                 ) : (
                   <TopicStateNote
                     topic={dockSupplyTopic}
-                    emptyMessage="The frontend is subscribed and waiting for `/dock_supply/state`."
+                    emptyMessage="站点网关正在等待 /dock_supply/state 的首帧。"
                   />
                 )}
               </Card>
@@ -686,7 +708,7 @@ export function RuntimeMonitoringPage() {
                 title={
                   <Space>
                     <span>station_status</span>
-                    <TopicStatusTag topic={stationStatusTopic} />
+                    <Tag color={stationStatusTag.color}>{stationStatusTag.label}</Tag>
                   </Space>
                 }
               >
@@ -697,10 +719,7 @@ export function RuntimeMonitoringPage() {
                     </Descriptions.Item>
                   </Descriptions>
                 ) : (
-                  <TopicStateNote
-                    topic={stationStatusTopic}
-                    emptyMessage="The frontend is subscribed and waiting for `/station_status`."
-                  />
+                  <StationStatusNote topic={stationStatusTopic} />
                 )}
               </Card>
             </Space>

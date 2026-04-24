@@ -12,10 +12,24 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "verify": "npm run lint && npm run test && npm run build",
-    "preview:bundle": "vite preview",
-    "serve:prod": "node ./scripts/serve-dist.mjs",
-    "start:prod": "npm run serve:prod -- --host 127.0.0.1 --port 4173"
+    "test:e2e:live": "playwright test --config=playwright.live.config.ts",
+    "test:e2e:live:readonly": "playwright test --config=playwright.live.config.ts --grep @live-readonly",
+    "test:e2e:live:write": "playwright test --config=playwright.live.config.ts --grep @live-write",
+    "test:e2e:live:write:slam": "playwright test --config=playwright.live.config.ts --grep @live-write-slam",
+    "test:e2e:live:write:task": "playwright test --config=playwright.live.config.ts --grep @live-write-task",
+    "test:e2e:live:write:schedule": "playwright test --config=playwright.live.config.ts --grep @live-write-schedule",
+    "test:e2e:live:write:map": "playwright test --config=playwright.live.config.ts --grep @live-write-map",
+    "audit:legacy": "node ./scripts/audit-legacy-boundaries.mjs",
+    "audit:production": "node ./scripts/audit-production-package.mjs",
+    "verify": "npm run lint && npm run audit:legacy && npm run test && npm run build && npm run audit:production",
+    "clean:workspace": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\clean-workspace.ps1",
+    "clean:workspace:deep": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\clean-workspace.ps1 -IncludeReleaseBackups",
+    "clean:workspace:release": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\clean-workspace.ps1 -IncludeReleaseBundles",
+    "package:trial": "npm run verify && node ./scripts/package-trial.mjs",
+    "gateway:dev": "node ./site-gateway/server.mjs --host 127.0.0.1 --port 4180",
+    "service:install": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\install-site-service.ps1",
+    "service:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\uninstall-site-service.ps1",
+    "start:prod": "node ./site-gateway/server.mjs --host 127.0.0.1 --port 4173"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.95.0",
@@ -25,6 +39,7 @@
     "react-dom": "^19.2.4",
     "react-konva": "^19.2.3",
     "roslib": "^2.1.0",
+    "ws": "^8.18.3",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

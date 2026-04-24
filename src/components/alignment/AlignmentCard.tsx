@@ -1,5 +1,6 @@
-import { Alert, Button, Card, Descriptions, Space, Tag, Typography } from 'antd'
+import { Button, Card, Descriptions, Space, Tag, Typography } from 'antd'
 
+import { AppFeedbackBanner } from '../feedback/AppFeedbackBanner'
 import { AlignmentPointPicker } from './AlignmentPointPicker'
 import type { MapAlignment, Point2D, ZoneEditorMode } from '../../types/map-editor'
 import { formatNumber } from '../../utils/geometry'
@@ -62,31 +63,23 @@ export function AlignmentCard({
 
       {hasActiveAlignment && !isAligning ? (
         <Typography.Paragraph className="alignment-card-note">
-          当前地图已经启用方向对齐。如果业务方向发生变化，可以随时重新执行一次对齐。
+          当前地图已经启用方向对齐。如业务方向发生变化，可以随时重新执行一次对齐。
         </Typography.Paragraph>
       ) : null}
 
       {isAligning && lastError ? (
-        <Alert
-          showIcon
-          type="error"
+        <AppFeedbackBanner
+          tone="error"
           title="地图对齐失败"
           description={lastError}
           className="alignment-card-alert"
         />
       ) : null}
 
-      {isAligning ? (
-        <AlignmentPointPicker points={points} isSubmitting={isConfirming} />
-      ) : null}
+      {isAligning ? <AlignmentPointPicker points={points} isSubmitting={isConfirming} /> : null}
 
       <Space wrap>
-        <Button
-          type="primary"
-          onClick={onStart}
-          disabled={!hasMap || isBusy}
-          loading={isConfirming}
-        >
+        <Button type="primary" onClick={onStart} disabled={!hasMap || isBusy} loading={isConfirming}>
           开始对齐
         </Button>
         {isAligning ? (

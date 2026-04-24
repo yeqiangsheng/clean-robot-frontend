@@ -1,7 +1,6 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_ROSBRIDGE_URL?: string
   readonly VITE_USE_MOCK_DATA?: 'true' | 'false'
 }
 

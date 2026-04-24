@@ -1,5 +1,7 @@
-import { Alert, Button, Card, Empty, Space, Tag, Typography } from 'antd'
+import { Button, Card, Space, Tag, Typography } from 'antd'
 
+import { AppEmptyState } from '../feedback/AppEmptyState'
+import { AppFeedbackBanner } from '../feedback/AppFeedbackBanner'
 import type { ConstraintEditorMode, Point2D } from '../../types/map-editor'
 
 interface NoGoEditorToolbarProps {
@@ -15,7 +17,7 @@ interface NoGoEditorToolbarProps {
 
 function formatPoint(point: Point2D | undefined) {
   if (!point) {
-    return 'Pending'
+    return '待选择'
   }
 
   return `(${point.x.toFixed(2)}, ${point.y.toFixed(2)})`
@@ -36,33 +38,29 @@ export function NoGoEditorToolbar({
 
   return (
     <Card
-      title="No-go Editor"
+      title="禁入区编辑"
       className="workbench-card"
       extra={
         isEditing ? (
-          <Tag color="processing">Editing</Tag>
+          <Tag color="processing">编辑中</Tag>
         ) : isCreating ? (
-          <Tag color="warning">Creating</Tag>
+          <Tag color="warning">新建中</Tag>
         ) : (
-          <Tag>Idle</Tag>
+          <Tag>空闲</Tag>
         )
       }
     >
       {!hasMap ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="Load a map or map workspace before creating a no-go area."
-        />
+        <AppEmptyState description="请先加载地图或工作区图层，再开始创建禁入区。" />
       ) : null}
 
       {hasMap && !isCreating && !isEditing ? (
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <Typography.Paragraph className="workbench-footnote zone-editor-note">
-            This tool currently supports rectangular no-go areas only. The canvas draft is a
-            display-side preview, and the saved backend geometry remains the source of truth.
+            当前工具只支持矩形禁入区。画布草稿用于本地编辑预览，最终以后端保存后的几何为准。
           </Typography.Paragraph>
           <Button type="primary" onClick={onStart} disabled={disableStart}>
-            Create no-go area
+            新建禁入区
           </Button>
         </Space>
       ) : null}
@@ -70,38 +68,35 @@ export function NoGoEditorToolbar({
       {hasMap && (isCreating || isEditing) ? (
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           {lastError ? (
-            <Alert
-              showIcon
-              type="error"
-              title={isEditing ? 'Failed to save no-go area' : 'Failed to create no-go area'}
+            <AppFeedbackBanner
+              tone="error"
+              title={isEditing ? '禁入区保存失败' : '禁入区创建失败'}
               description={lastError}
               className="zone-editor-alert"
             />
           ) : null}
 
           <div className="zone-editor-status">
-            <Typography.Text strong>
-              {isEditing ? 'Editing no-go area' : 'Creating no-go area'}
-            </Typography.Text>
+            <Typography.Text strong>{isEditing ? '正在编辑禁入区' : '正在新建禁入区'}</Typography.Text>
             <Typography.Text type="secondary">
               {isEditing
-                ? 'Drag the rectangle corners on the canvas, then save when the updated boundary looks right.'
+                ? '请在画布上拖拽矩形角点，确认边界合适后再保存。'
                 : rectPoints.length === 0
-                  ? 'Pick the first corner on the canvas.'
-                  : 'Pick the opposite corner to finish the local rectangle draft.'}
+                  ? '请先在画布上选择第一个角点。'
+                  : '请再选择一个对角点，完成本次矩形草稿。'}
             </Typography.Text>
             {!isEditing ? (
               <Typography.Text code>
-                Point 1 {formatPoint(rectPoints[0])}
+                点 1 {formatPoint(rectPoints[0])}
                 {'  '}
-                Point 2 {formatPoint(rectPoints[1])}
+                点 2 {formatPoint(rectPoints[1])}
               </Typography.Text>
             ) : null}
           </div>
 
           <Space wrap>
             <Button onClick={onCancel} disabled={isBusy}>
-              Cancel
+              取消
             </Button>
           </Space>
         </Space>

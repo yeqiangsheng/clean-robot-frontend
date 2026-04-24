@@ -1,6 +1,52 @@
-import { getDefaultRolePolicy } from '../../config/appConfig'
 import { useAppShellStore } from '../../stores/appShellStore'
 import type { CapabilityFlag, GatewayErrorShape, UserRole } from '../../types/appShell'
+
+const DEFAULT_ROLE_CAPABILITIES: Record<UserRole, CapabilityFlag[]> = {
+  operator: [
+    'overview',
+    'taskManagement',
+    'scheduleManagement',
+    'executionControl',
+    'profileCatalog',
+    'systemReadiness',
+  ],
+  service: [
+    'overview',
+    'mapWorkbench',
+    'taskManagement',
+    'scheduleManagement',
+    'executionControl',
+    'runtimeMonitoring',
+    'profileCatalog',
+    'systemReadiness',
+  ],
+  engineer: [
+    'overview',
+    'mapWorkbench',
+    'taskManagement',
+    'scheduleManagement',
+    'executionControl',
+    'slamWorkbench',
+    'runtimeMonitoring',
+    'actuatorControl',
+    'chargingControl',
+    'profileCatalog',
+    'systemReadiness',
+  ],
+  admin: [
+    'overview',
+    'mapWorkbench',
+    'taskManagement',
+    'scheduleManagement',
+    'executionControl',
+    'slamWorkbench',
+    'runtimeMonitoring',
+    'actuatorControl',
+    'chargingControl',
+    'profileCatalog',
+    'systemReadiness',
+  ],
+}
 
 function createGatewayError(
   message: string,
@@ -10,6 +56,7 @@ function createGatewayError(
     recoverable?: boolean
     requiresEngineer?: boolean
     missingDependency?: string | null
+    requestId?: string | null
   },
 ) {
   const error = new Error(message) as GatewayErrorShape
@@ -18,42 +65,35 @@ function createGatewayError(
   error.recoverable = options.recoverable ?? true
   error.requiresEngineer = options.requiresEngineer ?? false
   error.missingDependency = options.missingDependency ?? null
+  error.requestId = options.requestId ?? null
   return error
 }
 
 export function getEffectiveRole() {
-  const { currentRole, engineerUnlocked } = useAppShellStore.getState()
-
-  if (currentRole === 'engineer' && !engineerUnlocked) {
-    return 'service' as UserRole
-  }
-
-  return currentRole
+  return useAppShellStore.getState().currentRole
 }
 
 export function isCapabilityAllowedForRole(capability: CapabilityFlag, role: UserRole) {
-  const rolePolicy = getDefaultRolePolicy()
-  const allowedCapabilities = rolePolicy[role] ?? []
-  return allowedCapabilities.includes(capability)
+  return DEFAULT_ROLE_CAPABILITIES[role]?.includes(capability) ?? false
 }
 
 export function isCapabilityAllowed(capability: CapabilityFlag) {
-  return isCapabilityAllowedForRole(capability, getEffectiveRole())
+  return useAppShellStore.getState().grantedCapabilities.includes(capability)
 }
 
-export function assertCapabilityAllowed(
-  capability: CapabilityFlag,
-  actionLabel: string,
-) {
+export function assertCapabilityAllowed(capability: CapabilityFlag, actionLabel: string) {
   if (isCapabilityAllowed(capability)) {
     return
   }
 
-  throw createGatewayError(`${actionLabel} 仅对工程师模式开放。`, {
-    code: 'ENGINEER_CAPABILITY_REQUIRED',
+  throw createGatewayError(`${actionLabel} 当前不可用，请使用具备相应权限的账号登录。`, {
+    code: 'CAPABILITY_DENIED',
     source: 'access-control',
     recoverable: true,
-    requiresEngineer: true,
+    requiresEngineer:
+      capability === 'slamWorkbench' ||
+      capability === 'actuatorControl' ||
+      capability === 'chargingControl',
   })
 }
 
@@ -66,6 +106,7 @@ export function normalizeGatewayError(
     recoverable?: boolean
     requiresEngineer?: boolean
     missingDependency?: string | null
+    requestId?: string | null
   },
 ) {
   if (

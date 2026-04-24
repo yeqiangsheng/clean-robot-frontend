@@ -8,6 +8,12 @@ export type ConnectionStatus =
   | 'error'
   | 'mock'
 
+export type GatewayConnectionStatus =
+  | 'checking'
+  | 'online'
+  | 'offline'
+  | 'mock'
+
 export interface RosConnectionSnapshot {
   status: ConnectionStatus
   url: string
@@ -15,6 +21,8 @@ export interface RosConnectionSnapshot {
   lastError: string | null
   connectedAt: number | null
   sessionId: number
+  gatewayStatus: GatewayConnectionStatus
+  gatewayLastError: string | null
 }
 
 export type RosServiceRequest = Record<string, unknown>

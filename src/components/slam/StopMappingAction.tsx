@@ -19,15 +19,16 @@ export function StopMappingAction({
       extra={<WarningOutlined />}
     >
       <Typography.Paragraph className="slam-card-copy">
-        这是高风险操作。请先确认地图已经保存，再停止当前建图会话。
+        通过 `/clean_robot_server/app/submit_slam_command(stop_mapping)` 提交停止请求，
+        用于结束当前 mapping 流程。
       </Typography.Paragraph>
 
       <Space wrap>
         <Popconfirm
-          title="停止建图会话"
-          description="只有在当前建图结果已经保存后，才建议继续。"
+          title="确认停止建图？"
+          description="停止后会结束当前 mapping 流程。如需保留结果，请先执行保存地图。"
           okText="停止建图"
-          cancelText="继续建图"
+          cancelText="取消"
           onConfirm={onConfirm}
           disabled={disabled}
         >

@@ -5,6 +5,7 @@ interface WorkerFetchRequest {
   id: number
   type: 'fetch-current-map'
   url: string
+  transport: 'rosbridge' | 'http'
 }
 
 interface WorkerSuccessResponse {
@@ -91,7 +92,7 @@ class RosMapWorkerClient {
     return this.worker
   }
 
-  fetchCurrentMap(url: string) {
+  fetchCurrentMap(url: string, transport: 'rosbridge' | 'http' = 'rosbridge') {
     const worker = this.ensureWorker()
     const id = this.nextId
     this.nextId += 1
@@ -103,6 +104,7 @@ class RosMapWorkerClient {
         id,
         type: 'fetch-current-map',
         url,
+        transport,
       }
 
       worker.postMessage(request)
@@ -112,6 +114,9 @@ class RosMapWorkerClient {
 
 const rosMapWorkerClient = new RosMapWorkerClient()
 
-export function fetchCurrentMapFromWorker(url: string) {
-  return rosMapWorkerClient.fetchCurrentMap(url)
+export function fetchCurrentMapFromWorker(
+  url: string,
+  transport: 'rosbridge' | 'http' = 'rosbridge',
+) {
+  return rosMapWorkerClient.fetchCurrentMap(url, transport)
 }

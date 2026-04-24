@@ -1,43 +1,57 @@
 import { getRosConnectionManager } from './client'
+import { setRosDebugEvent } from './debug'
+import {
+  SLAM_JOB_QUERY_CONTRACT,
+  SLAM_STATUS_QUERY_CONTRACT,
+} from './queryContracts'
+import { callAppFirstReadQueryService } from './readQueryFallback'
+import {
+  SLAM_SUBMIT_SERVICE,
+  SLAM_SWITCH_MAP_FALLBACK_SERVICE,
+} from './serviceNames'
 
 import type { RosServiceRequest } from '../../types/ros'
 import type {
   JsonRecord,
-  SlamCancelJobResponse,
+  SlamActionKind,
   SlamSubmitJobResponse,
-  SlamSyncRuntimeStateResponse,
   SlamWorkflowJob,
   SlamWorkflowState,
   SubmitSlamWorkflowRequest,
 } from '../../types/slam-workflow'
 
 export const SLAM_DEFAULT_ROBOT_ID = 'local_robot'
-export const SLAM_DEFAULT_FRAME_ID = 'map'
-export const SLAM_STATE_QUERY_INTERVAL_MS = 2_000
-export const SLAM_JOB_POLL_INTERVAL_MS = 1_000
-export const SLAM_JOB_TERMINAL_STATES = [
-  'SUCCEEDED',
-  'FAILED',
-  'MANUAL_ASSIST_REQUIRED',
-  'CANCELED',
-] as const
 
-const GET_STATE_SERVICE_NAME = '/slam_workflow/get_state'
-const GET_STATE_SERVICE_TYPE = 'my_msg_srv/GetSlamWorkflowState'
-const GET_JOB_SERVICE_NAME = '/slam_workflow/get_job'
-const GET_JOB_SERVICE_TYPE = 'my_msg_srv/GetSlamWorkflowJob'
-const CANCEL_JOB_SERVICE_NAME = '/slam_workflow/cancel_job'
-const CANCEL_JOB_SERVICE_TYPE = 'my_msg_srv/CancelSlamWorkflowJob'
-const SYNC_RUNTIME_STATE_SERVICE_NAME = '/slam_workflow/sync_runtime_state'
-const SYNC_RUNTIME_STATE_SERVICE_TYPE = 'my_msg_srv/SyncSlamRuntimeState'
-const SUBMIT_SERVICE_TYPE = 'my_msg_srv/SubmitSlamWorkflow'
-const SUBMIT_PREPARE_FOR_TASK_SERVICE_NAME = '/slam_workflow/submit_prepare_for_task'
-const SUBMIT_SWITCH_MAP_AND_LOCALIZE_SERVICE_NAME =
-  '/slam_workflow/submit_switch_map_and_localize'
-const SUBMIT_RELOCALIZE_SERVICE_NAME = '/slam_workflow/submit_relocalize'
-const SUBMIT_START_MAPPING_SERVICE_NAME = '/slam_workflow/submit_start_mapping'
-const SUBMIT_SAVE_MAP_SERVICE_NAME = '/slam_workflow/submit_save_map'
-const SUBMIT_STOP_MAPPING_SERVICE_NAME = '/slam_workflow/submit_stop_mapping'
+const CANONICAL_SLAM_OPERATIONS = {
+  getStatus: 0,
+  switchMap: 7,
+  restartLocalization: 8,
+  startMapping: 3,
+  saveMapping: 4,
+  stopMapping: 5,
+  prepareForTask: 6,
+  verifyMapRevision: 9,
+  activateMapRevision: 10,
+} as const
+
+const DEPRECATED_SLAM_OPERATIONS = {
+  switchMap: 1,
+  restartLocalization: 2,
+  startMapping: 3,
+  saveMapping: 4,
+  stopMapping: 5,
+} as const
+
+const SUBMIT_SLAM_COMMAND_SERVICE_NAME = SLAM_SUBMIT_SERVICE.canonicalName
+const SUBMIT_SLAM_COMMAND_SERVICE_TYPE = SLAM_SUBMIT_SERVICE.serviceType
+const SUBMIT_SLAM_COMMAND_DEPRECATED_FALLBACK_SERVICE_NAME =
+  SLAM_SUBMIT_SERVICE.deprecatedFallbackName
+const SUBMIT_SLAM_COMMAND_DEPRECATED_FALLBACK_SERVICE_TYPE =
+  SLAM_SUBMIT_SERVICE.serviceType
+const SWITCH_MAP_DEPRECATED_FALLBACK_SERVICE_NAME =
+  SLAM_SWITCH_MAP_FALLBACK_SERVICE.serviceName
+const SWITCH_MAP_DEPRECATED_FALLBACK_SERVICE_TYPE =
+  SLAM_SWITCH_MAP_FALLBACK_SERVICE.serviceType
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -116,6 +130,16 @@ function toBoolean(value: unknown) {
   return null
 }
 
+function toStringArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter((item) => item.length > 0)
+}
+
 function toTimestamp(value: unknown): number | null {
   if (isRecord(value)) {
     const secs = toNumber(value.secs)
@@ -189,34 +213,84 @@ function findFirstRecord(
   return null
 }
 
-function isSlamJobTerminalState(jobState: string) {
-  return SLAM_JOB_TERMINAL_STATES.includes(jobState as (typeof SLAM_JOB_TERMINAL_STATES)[number])
+function callRosService(request: {
+  serviceName: string
+  serviceType: string
+  payload: RosServiceRequest
+}) {
+  const client = getRosConnectionManager()
+  return client.callService<RosServiceRequest, JsonRecord>({
+    serviceName: request.serviceName,
+    serviceType: request.serviceType,
+    request: request.payload,
+  })
 }
 
 function normalizeSlamWorkflowStateRecord(record: JsonRecord): SlamWorkflowState {
   return {
-    workflowState: pickString(record, ['workflow_state', 'workflowState']) || '--',
-    workflowPhase: pickString(record, ['workflow_phase', 'workflowPhase']),
-    busy: toBoolean(pickValue(record, ['busy'])) ?? false,
-    activeJobId: pickString(record, ['active_job_id', 'activeJobId']),
-    runtimeMode: pickString(record, ['runtime_mode', 'runtimeMode']),
+    desiredMode: pickString(record, ['desired_mode', 'desiredMode']),
+    currentMode: pickString(record, ['current_mode', 'currentMode']),
+    activeMapName: pickString(record, ['active_map_name', 'activeMapName']),
+    activeMapId: pickString(record, ['active_map_id', 'activeMapId']),
+    activeMapMd5: pickString(record, ['active_map_md5', 'activeMapMd5']),
     runtimeMapName: pickString(record, ['runtime_map_name', 'runtimeMapName']),
     runtimeMapId: pickString(record, ['runtime_map_id', 'runtimeMapId']),
     runtimeMapMd5: pickString(record, ['runtime_map_md5', 'runtimeMapMd5']),
-    assetActiveMapName: pickString(record, ['asset_active_map_name', 'assetActiveMapName']),
-    runtimeMapMatch: toBoolean(pickValue(record, ['runtime_map_match', 'runtimeMapMatch'])),
     localizationState: pickString(record, ['localization_state', 'localizationState']),
     localizationValid: toBoolean(pickValue(record, ['localization_valid', 'localizationValid'])),
-    mappingSessionActive:
-      toBoolean(pickValue(record, ['mapping_session_active', 'mappingSessionActive'])) ?? false,
-    taskReady: toBoolean(pickValue(record, ['task_ready', 'taskReady'])) ?? false,
-    manualAssistRequired:
-      toBoolean(pickValue(record, ['manual_assist_required', 'manualAssistRequired'])) ?? false,
-    progressText: pickString(record, ['progress_text', 'progressText']),
-    blockingReason: pickString(record, ['blocking_reason', 'blockingReason']),
+    runtimeMapReady: toBoolean(pickValue(record, ['runtime_map_ready', 'runtimeMapReady'])),
+    activeMapMatch: toBoolean(pickValue(record, ['active_map_match', 'activeMapMatch'])),
+    lifecycleState: pickString(record, ['lifecycle_state', 'lifecycleState']),
+    activeJobId: pickString(record, ['active_job_id', 'activeJobId']),
+    activeJobStatus: pickString(record, ['active_job_status', 'activeJobStatus']),
+    activeJobPhase: pickString(record, ['active_job_phase', 'activeJobPhase']),
+    activeJobProgress01: toNumber(
+      pickValue(record, ['active_job_progress_0_1', 'activeJobProgress01']),
+    ),
+    mapTopicFresh: toBoolean(pickValue(record, ['map_topic_fresh', 'mapTopicFresh'])),
+    mapAgeS: toNumber(pickValue(record, ['map_age_s', 'mapAgeS'])),
+    trackedPoseFresh: toBoolean(
+      pickValue(record, ['tracked_pose_fresh', 'trackedPoseFresh']),
+    ),
+    trackedPoseAgeS: toNumber(
+      pickValue(record, ['tracked_pose_age_s', 'trackedPoseAgeS']),
+    ),
+    missionState: pickString(record, ['mission_state', 'missionState']),
+    phase: pickString(record, ['phase']),
+    publicState: pickString(record, ['public_state', 'publicState']),
+    executorState: pickString(record, ['executor_state', 'executorState']),
+    taskRunning: toBoolean(pickValue(record, ['task_running', 'taskRunning'])),
+    canRestartLocalization:
+      toBoolean(
+        pickValue(record, [
+          'can_restart_localization',
+          'canRestartLocalization',
+          'can_relocalize',
+          'canRelocalize',
+        ]),
+      ) ?? false,
+    canSwitchMap:
+      toBoolean(
+        pickValue(record, [
+          'can_switch_map',
+          'canSwitchMap',
+          'can_switch_map_and_localize',
+          'canSwitchMapAndLocalize',
+        ]),
+      ) ?? false,
+    canStartMapping:
+      toBoolean(pickValue(record, ['can_start_mapping', 'canStartMapping'])) ?? false,
+    canSaveMapping:
+      toBoolean(pickValue(record, ['can_save_mapping', 'canSaveMapping'])) ?? false,
+    canStopMapping:
+      toBoolean(pickValue(record, ['can_stop_mapping', 'canStopMapping'])) ?? false,
     lastErrorCode: pickString(record, ['last_error_code', 'lastErrorCode']),
-    lastErrorMessage: pickString(record, ['last_error_message', 'lastErrorMessage']),
-    updatedTs: toTimestamp(pickValue(record, ['updated_ts', 'updatedTs'])),
+    lastErrorMessage: pickString(record, ['last_error_msg', 'lastErrorMsg', 'last_error_message']),
+    blockingReasons: toStringArray(
+      pickValue(record, ['blocking_reasons', 'blockingReasons']),
+    ),
+    warnings: toStringArray(pickValue(record, ['warnings'])),
+    stampMs: toTimestamp(pickValue(record, ['stamp'])),
     raw: record,
   }
 }
@@ -224,17 +298,9 @@ function normalizeSlamWorkflowStateRecord(record: JsonRecord): SlamWorkflowState
 export function normalizeSlamWorkflowState(payload: unknown): SlamWorkflowState | null {
   const parsed = parseMaybeJson(payload)
 
-  if (isRecord(parsed) && parsed.found === false) {
-    return null
-  }
-
   const stateRecord =
     (isRecord(parsed) && isRecord(parsed.state) ? parsed.state : null) ??
-    findFirstRecord(parsed, [
-      'workflow_state',
-      'runtime_mode',
-      'localization_state',
-    ]) ??
+    findFirstRecord(parsed, ['current_mode', 'localization_state', 'active_job_id']) ??
     (isRecord(parsed) ? parsed : null)
 
   return stateRecord ? normalizeSlamWorkflowStateRecord(stateRecord) : null
@@ -243,23 +309,26 @@ export function normalizeSlamWorkflowState(payload: unknown): SlamWorkflowState 
 function normalizeSlamWorkflowJobRecord(record: JsonRecord): SlamWorkflowJob {
   return {
     jobId: pickString(record, ['job_id', 'jobId']),
-    jobType: pickString(record, ['job_type', 'jobType']),
-    jobState: pickString(record, ['job_state', 'jobState']) || '--',
-    workflowPhase: pickString(record, ['workflow_phase', 'workflowPhase']),
-    progressPercent: toNumber(pickValue(record, ['progress_percent', 'progressPercent'])),
-    progressText: pickString(record, ['progress_text', 'progressText']),
-    resultSuccess: toBoolean(pickValue(record, ['result_success', 'resultSuccess'])),
-    resultCode: pickString(record, ['result_code', 'resultCode']),
-    resultMessage: pickString(record, ['result_message', 'resultMessage']),
-    runtimeMapName: pickString(record, ['runtime_map_name', 'runtimeMapName']),
-    runtimeMapMatch: toBoolean(pickValue(record, ['runtime_map_match', 'runtimeMapMatch'])),
+    robotId: pickString(record, ['robot_id', 'robotId']),
+    operation: toNumber(pickValue(record, ['operation'])),
+    operationName: pickString(record, ['operation_name', 'operationName']),
+    requestedMapName: pickString(record, ['requested_map_name', 'requestedMapName']),
+    resolvedMapName: pickString(record, ['resolved_map_name', 'resolvedMapName']),
+    setActive: toBoolean(pickValue(record, ['set_active', 'setActive'])),
+    description: pickString(record, ['description']),
+    status: pickString(record, ['status']) || '--',
+    phase: pickString(record, ['phase']),
+    progress01: toNumber(pickValue(record, ['progress_0_1', 'progress01'])),
+    done: toBoolean(pickValue(record, ['done'])) ?? false,
+    success: toBoolean(pickValue(record, ['success'])),
+    errorCode: pickString(record, ['error_code', 'errorCode']),
+    message: pickString(record, ['message']),
+    currentMode: pickString(record, ['current_mode', 'currentMode']),
     localizationState: pickString(record, ['localization_state', 'localizationState']),
-    localizationValid: toBoolean(pickValue(record, ['localization_valid', 'localizationValid'])),
-    manualAssistRequired:
-      toBoolean(pickValue(record, ['manual_assist_required', 'manualAssistRequired'])) ?? false,
-    createdTs: toTimestamp(pickValue(record, ['created_ts', 'createdTs'])),
-    updatedTs: toTimestamp(pickValue(record, ['updated_ts', 'updatedTs'])),
-    finishedTs: toTimestamp(pickValue(record, ['finished_ts', 'finishedTs'])),
+    createdAtMs: toTimestamp(pickValue(record, ['created_at', 'createdAt'])),
+    startedAtMs: toTimestamp(pickValue(record, ['started_at', 'startedAt'])),
+    finishedAtMs: toTimestamp(pickValue(record, ['finished_at', 'finishedAt'])),
+    updatedAtMs: toTimestamp(pickValue(record, ['updated_at', 'updatedAt'])),
     raw: record,
   }
 }
@@ -272,172 +341,275 @@ export function normalizeSlamWorkflowJob(payload: unknown): SlamWorkflowJob | nu
   }
 
   const jobRecord =
-    findFirstRecord(parsed, ['job_id', 'job_state', 'job_type']) ??
+    (isRecord(parsed) && isRecord(parsed.job) ? parsed.job : null) ??
+    findFirstRecord(parsed, ['job_id', 'status', 'operation_name']) ??
     (isRecord(parsed) ? parsed : null)
 
   return jobRecord ? normalizeSlamWorkflowJobRecord(jobRecord) : null
 }
 
-function normalizeSubmitRequest(
-  request: SubmitSlamWorkflowRequest,
-): RosServiceRequest {
-  return {
-    robot_id: request.robotId ?? SLAM_DEFAULT_ROBOT_ID,
-    map_name: request.mapName ?? '',
-    frame_id: request.frameId ?? SLAM_DEFAULT_FRAME_ID,
-    has_initial_pose: request.hasInitialPose ?? false,
-    initial_pose_x: request.initialPoseX ?? 0,
-    initial_pose_y: request.initialPoseY ?? 0,
-    initial_pose_yaw: request.initialPoseYaw ?? 0,
-    save_map_name: request.saveMapName ?? '',
-    include_unfinished_submaps: request.includeUnfinishedSubmaps ?? false,
-    set_active_on_save: request.setActiveOnSave ?? true,
-    switch_to_localization_after_save:
-      request.switchToLocalizationAfterSave ?? false,
-    relocalize_after_switch: request.relocalizeAfterSwitch ?? false,
-  }
-}
-
-async function callRosService<TResponse extends JsonRecord>({
-  serviceName,
-  serviceType,
-  request,
-}: {
-  serviceName: string
-  serviceType: string
-  request: RosServiceRequest
-}) {
-  const client = getRosConnectionManager()
-
-  return client.callService<RosServiceRequest, TResponse>({
-    serviceName,
-    serviceType,
-    request,
-  })
-}
-
-function normalizeSubmitJobResponse(payload: JsonRecord): SlamSubmitJobResponse {
-  return {
-    accepted: toBoolean(pickValue(payload, ['accepted'])) ?? false,
-    message: pickString(payload, ['message']),
-    jobId: pickString(payload, ['job_id', 'jobId']),
-    jobType: pickString(payload, ['job_type', 'jobType']),
-    workflowState: pickString(payload, ['workflow_state', 'workflowState']),
-    manualAssistRequired:
-      toBoolean(pickValue(payload, ['manual_assist_required', 'manualAssistRequired'])) ?? false,
-    raw: payload,
-  }
-}
-
-function normalizeCancelJobResponse(payload: JsonRecord): SlamCancelJobResponse {
-  return {
-    success: toBoolean(pickValue(payload, ['success'])) ?? false,
-    message: pickString(payload, ['message']),
-    jobState: pickString(payload, ['job_state', 'jobState']),
-    raw: payload,
-  }
-}
-
-function normalizeSyncRuntimeStateResponse(payload: JsonRecord): SlamSyncRuntimeStateResponse {
-  return {
-    success: toBoolean(pickValue(payload, ['success'])) ?? false,
-    message: pickString(payload, ['message']),
-    state: normalizeSlamWorkflowState(payload.state),
-    raw: payload,
-  }
-}
-
-export async function getSlamWorkflowState(robotId = SLAM_DEFAULT_ROBOT_ID) {
-  const payload = await callRosService<JsonRecord>({
-    serviceName: GET_STATE_SERVICE_NAME,
-    serviceType: GET_STATE_SERVICE_TYPE,
-    request: {
-      robot_id: robotId,
-    },
-  })
-
-  return normalizeSlamWorkflowState(payload)
-}
-
-export async function syncSlamRuntimeState(robotId = SLAM_DEFAULT_ROBOT_ID) {
-  const payload = await callRosService<JsonRecord>({
-    serviceName: SYNC_RUNTIME_STATE_SERVICE_NAME,
-    serviceType: SYNC_RUNTIME_STATE_SERVICE_TYPE,
-    request: {
-      robot_id: robotId,
-    },
-  })
-
-  return normalizeSyncRuntimeStateResponse(payload)
-}
-
-export async function getSlamWorkflowJob(jobId: string) {
-  const payload = await callRosService<JsonRecord>({
-    serviceName: GET_JOB_SERVICE_NAME,
-    serviceType: GET_JOB_SERVICE_TYPE,
-    request: {
-      job_id: jobId,
-    },
-  })
-
-  return normalizeSlamWorkflowJob(payload)
-}
-
-export async function cancelSlamWorkflowJob(jobId: string) {
-  const payload = await callRosService<JsonRecord>({
-    serviceName: CANCEL_JOB_SERVICE_NAME,
-    serviceType: CANCEL_JOB_SERVICE_TYPE,
-    request: {
-      job_id: jobId,
-    },
-  })
-
-  return normalizeCancelJobResponse(payload)
-}
-
-async function submitWorkflowAction(
-  serviceName: string,
-  request: SubmitSlamWorkflowRequest,
+function getOperationForAction(
+  actionKind: SlamActionKind,
+  useDeprecatedFallback = false,
 ) {
-  const payload = await callRosService<JsonRecord>({
-    serviceName,
-    serviceType: SUBMIT_SERVICE_TYPE,
-    request: normalizeSubmitRequest(request),
+  const operations = useDeprecatedFallback
+    ? DEPRECATED_SLAM_OPERATIONS
+    : CANONICAL_SLAM_OPERATIONS
+
+  switch (actionKind) {
+    case 'switch_map':
+      return operations.switchMap
+    case 'relocalize':
+    case 'restart_localization':
+      return operations.restartLocalization
+    case 'start_mapping':
+      return operations.startMapping
+    case 'save_mapping':
+      return operations.saveMapping
+    case 'stop_mapping':
+      return operations.stopMapping
+    default:
+      return null
+  }
+}
+
+export function normalizeSubmitJobResponse(payload: JsonRecord): SlamSubmitJobResponse {
+  return {
+    accepted: Boolean(toBoolean(pickValue(payload, ['accepted']))),
+    message: pickString(payload, ['message']),
+    errorCode: pickString(payload, ['error_code', 'errorCode']),
+    jobId: pickString(payload, ['job_id', 'jobId']),
+    operation: toNumber(pickValue(payload, ['operation'])),
+    mapName: pickString(payload, ['map_name', 'mapName']),
+    job: normalizeSlamWorkflowJob(payload.job),
+    raw: payload,
+  }
+}
+
+function buildSubmitSlamCommandPayload(
+  actionKind: SlamActionKind,
+  request: SubmitSlamWorkflowRequest = {},
+  useDeprecatedFallback = false,
+) {
+  const operation = getOperationForAction(actionKind, useDeprecatedFallback)
+
+  if (operation === null) {
+    throw new Error(`Unsupported long-running SLAM action: ${String(actionKind)}`)
+  }
+
+  const basePayload = {
+    operation,
+    robot_id: request.robotId ?? SLAM_DEFAULT_ROBOT_ID,
+    map_name: request.mapName?.trim() ?? '',
+    set_active: request.setActive ?? true,
+    description: request.description?.trim() ?? '',
+  } satisfies RosServiceRequest
+
+  if (useDeprecatedFallback && actionKind === 'switch_map') {
+    return {
+      ...basePayload,
+      refresh_map_identity: request.refreshMapIdentity ?? false,
+      restart_localization_after_switch: request.restartLocalizationAfterSwitch ?? true,
+    } satisfies RosServiceRequest
+  }
+
+  return basePayload
+}
+
+function normalizeErrorMessage(error: unknown, fallbackMessage: string) {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message
+  }
+
+  return fallbackMessage
+}
+
+async function callDeprecatedSwitchMapFallback(request: SubmitSlamWorkflowRequest = {}) {
+  const payload = await callRosService({
+    serviceName: SWITCH_MAP_DEPRECATED_FALLBACK_SERVICE_NAME,
+    serviceType: SWITCH_MAP_DEPRECATED_FALLBACK_SERVICE_TYPE,
+    payload: {
+      operation: DEPRECATED_SLAM_OPERATIONS.switchMap,
+      robot_id: request.robotId ?? SLAM_DEFAULT_ROBOT_ID,
+      map_name: request.mapName?.trim() ?? '',
+      refresh_map_identity: request.refreshMapIdentity ?? false,
+      restart_localization_after_switch:
+        request.restartLocalizationAfterSwitch ?? true,
+      set_active: request.setActive ?? true,
+      description: request.description?.trim() ?? '',
+    },
   })
 
-  return normalizeSubmitJobResponse(payload)
+  return {
+    accepted: Boolean(toBoolean(pickValue(payload, ['success']))),
+    message: pickString(payload, ['message']),
+    errorCode: pickString(payload, ['error_code', 'errorCode']),
+    jobId: '',
+    operation: DEPRECATED_SLAM_OPERATIONS.switchMap,
+    mapName: pickString(payload, ['map_name', 'mapName']) || request.mapName?.trim() || '',
+    job: null,
+    raw: isRecord(payload) ? payload : {},
+  } satisfies SlamSubmitJobResponse
 }
 
-export function submitPrepareForTask(request: SubmitSlamWorkflowRequest) {
-  return submitWorkflowAction(SUBMIT_PREPARE_FOR_TASK_SERVICE_NAME, request)
+export async function getSlamWorkflowState(
+  robotId = SLAM_DEFAULT_ROBOT_ID,
+  refreshMapIdentity = false,
+) {
+  return callAppFirstReadQueryService({
+    contract: SLAM_STATUS_QUERY_CONTRACT,
+    request: {
+      robot_id: robotId,
+      refresh_map_identity: refreshMapIdentity,
+    },
+    evaluateAppResponse: (payload) => {
+      const normalized = normalizeSlamWorkflowState(payload)
+
+      return normalized
+        ? {
+            kind: 'success',
+            value: normalized,
+          }
+        : {
+            kind: 'fallback',
+            reason: 'App SLAM status query returned no usable workflow state.',
+          }
+    },
+    mapLegacyResponse: (payload) => {
+      const normalized = normalizeSlamWorkflowState(payload)
+
+      if (!normalized) {
+        throw new Error('Legacy SLAM status query returned no usable workflow state.')
+      }
+
+      return normalized
+    },
+  })
 }
 
-export function submitSwitchMapAndLocalize(request: SubmitSlamWorkflowRequest) {
-  return submitWorkflowAction(SUBMIT_SWITCH_MAP_AND_LOCALIZE_SERVICE_NAME, request)
+export async function getSlamWorkflowJob(
+  jobId: string,
+  robotId = SLAM_DEFAULT_ROBOT_ID,
+) {
+  return callAppFirstReadQueryService({
+    contract: SLAM_JOB_QUERY_CONTRACT,
+    request: {
+      job_id: jobId.trim(),
+      robot_id: robotId,
+    },
+    evaluateAppResponse: (payload) => {
+      if (isRecord(payload) && payload.found === false) {
+        return {
+          kind: 'success',
+          value: null,
+        }
+      }
+
+      const normalized = normalizeSlamWorkflowJob(payload)
+
+      return normalized
+        ? {
+            kind: 'success',
+            value: normalized,
+          }
+        : {
+            kind: 'fallback',
+            reason: 'App SLAM job query returned no usable job payload.',
+          }
+    },
+    mapLegacyResponse: (payload) => {
+      if (isRecord(payload) && payload.found === false) {
+        return null
+      }
+
+      const normalized = normalizeSlamWorkflowJob(payload)
+
+      if (!normalized) {
+        throw new Error('Legacy SLAM job query returned no usable job payload.')
+      }
+
+      return normalized
+    },
+  })
+}
+
+export async function submitSlamCommand(
+  actionKind: SlamActionKind,
+  request: SubmitSlamWorkflowRequest = {},
+) {
+  const payload = buildSubmitSlamCommandPayload(actionKind, request)
+
+  try {
+    const response = await callRosService({
+      serviceName: SUBMIT_SLAM_COMMAND_SERVICE_NAME,
+      serviceType: SUBMIT_SLAM_COMMAND_SERVICE_TYPE,
+      payload,
+    })
+
+    return normalizeSubmitJobResponse(response)
+  } catch (canonicalError) {
+    if (actionKind === 'switch_map') {
+      setRosDebugEvent(
+        `slam:deprecated-fallback:${SWITCH_MAP_DEPRECATED_FALLBACK_SERVICE_NAME}`,
+      )
+
+      try {
+        return await callDeprecatedSwitchMapFallback(request)
+      } catch (fallbackError) {
+        throw new Error(
+          `${normalizeErrorMessage(
+            fallbackError,
+            `Deprecated fallback switch-map service ${SWITCH_MAP_DEPRECATED_FALLBACK_SERVICE_NAME} failed.`,
+          )} (canonical failure: ${normalizeErrorMessage(
+            canonicalError,
+            `Canonical submit service ${SUBMIT_SLAM_COMMAND_SERVICE_NAME} failed.`,
+          )})`,
+        )
+      }
+    }
+
+    setRosDebugEvent(
+      `slam:deprecated-fallback:${SUBMIT_SLAM_COMMAND_DEPRECATED_FALLBACK_SERVICE_NAME}`,
+    )
+
+    try {
+      const response = await callRosService({
+        serviceName: SUBMIT_SLAM_COMMAND_DEPRECATED_FALLBACK_SERVICE_NAME,
+        serviceType: SUBMIT_SLAM_COMMAND_DEPRECATED_FALLBACK_SERVICE_TYPE,
+        payload: buildSubmitSlamCommandPayload(actionKind, request, true),
+      })
+
+      return normalizeSubmitJobResponse(response)
+    } catch (fallbackError) {
+      throw new Error(
+        `${normalizeErrorMessage(
+          fallbackError,
+          `Deprecated fallback submit service ${SUBMIT_SLAM_COMMAND_DEPRECATED_FALLBACK_SERVICE_NAME} failed.`,
+        )} (canonical failure: ${normalizeErrorMessage(
+          canonicalError,
+          `Canonical submit service ${SUBMIT_SLAM_COMMAND_SERVICE_NAME} failed.`,
+        )})`,
+      )
+    }
+  }
+}
+
+export function submitSwitchMap(request: SubmitSlamWorkflowRequest) {
+  return submitSlamCommand('switch_map', request)
 }
 
 export function submitRelocalize(request: SubmitSlamWorkflowRequest) {
-  return submitWorkflowAction(SUBMIT_RELOCALIZE_SERVICE_NAME, request)
+  return submitSlamCommand('relocalize', request)
 }
 
 export function submitStartMapping(request: SubmitSlamWorkflowRequest) {
-  return submitWorkflowAction(SUBMIT_START_MAPPING_SERVICE_NAME, request)
+  return submitSlamCommand('start_mapping', request)
 }
 
-export function submitSaveMap(request: SubmitSlamWorkflowRequest) {
-  return submitWorkflowAction(SUBMIT_SAVE_MAP_SERVICE_NAME, request)
+export function submitSaveMapping(request: SubmitSlamWorkflowRequest) {
+  return submitSlamCommand('save_mapping', request)
 }
 
 export function submitStopMapping(request: SubmitSlamWorkflowRequest) {
-  return submitWorkflowAction(SUBMIT_STOP_MAPPING_SERVICE_NAME, request)
+  return submitSlamCommand('stop_mapping', request)
 }
-
-export function formatSlamRosserviceCommand(
-  serviceName: string,
-  request: SubmitSlamWorkflowRequest,
-) {
-  const normalizedRequest = normalizeSubmitRequest(request)
-  return `rosservice call ${serviceName} '${JSON.stringify(normalizedRequest)}'`
-}
-
-export { isSlamJobTerminalState }

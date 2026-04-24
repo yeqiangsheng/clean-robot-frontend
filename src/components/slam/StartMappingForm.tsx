@@ -1,12 +1,13 @@
 import { useEffect, useMemo } from 'react'
 
-import { Button, Card, Form, Input, Space, Typography } from 'antd'
+import { Button, Card, Form, Input, Space, Switch, Typography } from 'antd'
 
 import { buildTimestampedMapName } from '../../utils/slam'
 
 type StartMappingFormValues = {
   mapName: string
-  frameId: string
+  setActive: boolean
+  description: string
 }
 
 type StartMappingFormProps = {
@@ -44,7 +45,8 @@ export function StartMappingForm({
   return (
     <Card title="开始建图" className="slam-card">
       <Typography.Paragraph className="slam-card-copy">
-        这里会启动一次新的建图会话。建议使用唯一地图名称，并在停止建图前先保存地图，避免当前成果丢失。
+        通过 `/clean_robot_server/app/submit_slam_command(start_mapping)` 提交建图任务，
+        开始后页面会继续订阅 `/map` 实时地图。
       </Typography.Paragraph>
 
       <Form<StartMappingFormValues>
@@ -52,20 +54,29 @@ export function StartMappingForm({
         layout="vertical"
         initialValues={{
           mapName: generatedMapName,
-          frameId: 'map',
+          setActive: true,
+          description: '',
         }}
         onFinish={onSubmit}
       >
         <Form.Item
           name="mapName"
           label="地图名称"
-          rules={[{ required: true, message: '请输入建图 map_name。' }]}
+          rules={[{ required: true, message: '请输入建图输出的 map_name' }]}
         >
           <Input disabled={disabled} placeholder={generatedMapName} />
         </Form.Item>
 
-        <Form.Item name="frameId" label="坐标系">
-          <Input disabled={disabled} placeholder="map" />
+        <Form.Item
+          name="setActive"
+          label="建图完成后切换为当前活动地图"
+          valuePropName="checked"
+        >
+          <Switch disabled={disabled} />
+        </Form.Item>
+
+        <Form.Item name="description" label="说明">
+          <Input disabled={disabled} placeholder="可选，用于记录本次建图原因" />
         </Form.Item>
 
         <Space wrap>

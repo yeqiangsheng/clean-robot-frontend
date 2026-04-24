@@ -1,15 +1,12 @@
-import { getRosConnectionManager } from './client'
+import { PROFILE_CATALOG_QUERY_CONTRACT } from './queryContracts'
+import { callAppFirstReadQueryService } from './readQueryFallback'
 
 import type { ProfileCatalogEntry, ProfileKind } from '../../types/profileCatalog'
-import type { RosServiceRequest } from '../../types/ros'
 import { normalizeCleanModeList } from '../../utils/cleanMode'
 
 type JsonRecord = Record<string, unknown>
 
 const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
-
-const PROFILE_CATALOG_SERVICE_NAME = '/database_server/profile_catalog_service'
-const PROFILE_CATALOG_SERVICE_TYPE = 'my_msg_srv/GetProfileCatalog'
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -94,15 +91,6 @@ function createServiceError(payload: unknown, fallbackMessage: string) {
   return new Error(getResponseMessage(payload) ?? fallbackMessage)
 }
 
-async function callRosService(payload: RosServiceRequest) {
-  const client = getRosConnectionManager()
-  return client.callService<RosServiceRequest, JsonRecord>({
-    serviceName: PROFILE_CATALOG_SERVICE_NAME,
-    serviceType: PROFILE_CATALOG_SERVICE_TYPE,
-    request: payload,
-  })
-}
-
 function normalizeProfileKind(value: string): ProfileKind {
   return value === 'plan' || value === 'sys' ? value : ''
 }
@@ -164,8 +152,28 @@ const mockProfiles: ProfileCatalogEntry[] = [
   },
 ]
 
+function normalizeProfileCatalogEntries(payload: unknown) {
+  if (getResponseSuccess(payload) === false) {
+    throw createServiceError(payload, 'Profile catalog query returned an error.')
+  }
+
+  const profiles = Array.isArray(payload)
+    ? payload.filter((item) => isRecord(item))
+    : isRecord(payload) && Array.isArray(payload.profiles)
+      ? payload.profiles.filter((item) => isRecord(item))
+      : null
+
+  if (!profiles) {
+    return null
+  }
+
+  return profiles
+    .map((record) => normalizeProfileEntry(record))
+    .filter((entry) => entry.profileName.length > 0)
+}
+
 export async function fetchProfileCatalog(options: {
-  profileKind: Exclude<ProfileKind, ''>
+  profileKind: ProfileKind
   includeDisabled?: boolean
   mapName?: string | null
 }) {
@@ -177,21 +185,48 @@ export async function fetchProfileCatalog(options: {
     )
   }
 
-  const payload = await callRosService({
+  const request = {
     profile_kind: options.profileKind,
     include_disabled: options.includeDisabled ?? false,
     map_name: options.mapName?.trim() ?? '',
-  })
-
-  if (getResponseSuccess(payload) === false) {
-    throw createServiceError(payload, 'Profile catalog query returned an error.')
   }
 
-  const profiles = Array.isArray(payload.profiles)
-    ? payload.profiles.filter((item) => isRecord(item))
-    : []
+  return callAppFirstReadQueryService({
+    contract: PROFILE_CATALOG_QUERY_CONTRACT,
+    request,
+    evaluateAppResponse: (payload) => {
+      try {
+        const normalized = normalizeProfileCatalogEntries(payload)
 
-  return profiles
-    .map((record) => normalizeProfileEntry(record))
-    .filter((entry) => entry.profileName.length > 0)
+        return normalized
+          ? {
+              kind: 'success',
+              value: normalized,
+            }
+          : {
+              kind: 'fallback',
+              reason: 'App profile catalog query returned no usable profiles list.',
+            }
+      } catch (error) {
+        return {
+          kind: 'error',
+          error:
+            error instanceof Error
+              ? error
+              : new Error('Profile catalog query returned an error.'),
+        }
+      }
+    },
+    mapLegacyResponse: (payload) => {
+      const normalized = normalizeProfileCatalogEntries(payload)
+
+      if (!normalized) {
+        throw new Error(
+          'Legacy profile catalog query returned no usable profiles list.',
+        )
+      }
+
+      return normalized
+    },
+  })
 }

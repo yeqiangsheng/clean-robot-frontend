@@ -1,17 +1,9 @@
-import {
-  Alert,
-  Button,
-  Card,
-  Descriptions,
-  Empty,
-  Popconfirm,
-  Space,
-  Spin,
-  Tag,
-  Typography,
-} from 'antd'
+import { Button, Card, Descriptions, Popconfirm, Space, Tag, Typography } from 'antd'
 import { DatabaseOutlined, EditOutlined } from '@ant-design/icons'
 
+import { AppEmptyState } from '../../components/feedback/AppEmptyState'
+import { AppFeedbackBanner } from '../../components/feedback/AppFeedbackBanner'
+import { AppLoadingState } from '../../components/feedback/AppLoadingState'
 import type { TaskEntity } from '../../types/task'
 import {
   getRepeatAfterFullChargeTag,
@@ -72,19 +64,13 @@ export function TaskManagementDetail({
       }
     >
       {isRefreshing && detail ? (
-        <div className="task-loading task-loading-compact">
-          <Spin />
-          <Typography.Text>正在刷新任务详情...</Typography.Text>
-        </div>
+        <AppLoadingState message="正在刷新任务详情…" compact className="task-loading" />
       ) : null}
 
       {isLoading ? (
-        <div className="task-loading">
-          <Spin />
-          <Typography.Text>正在加载任务详情...</Typography.Text>
-        </div>
+        <AppLoadingState message="正在加载任务详情…" className="task-loading" />
       ) : error ? (
-        <Alert showIcon type="error" title="任务详情加载失败" description={error} />
+        <AppFeedbackBanner tone="error" title="任务详情加载失败" description={error} />
       ) : detail ? (
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <Descriptions column={2} size="small" colon={false}>
@@ -137,12 +123,15 @@ export function TaskManagementDetail({
                 ))}
               </Descriptions>
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未返回任务元数据。" />
+              <AppEmptyState title="暂无任务元数据" description="后端这次没有返回额外元数据。" />
             )}
           </Card>
         </Space>
       ) : (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请选择一个任务查看详情。" />
+        <AppEmptyState
+          title="请选择一个任务"
+          description="从左侧任务列表选择一条任务后，这里会显示详情。"
+        />
       )}
     </Card>
   )

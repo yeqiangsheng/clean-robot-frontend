@@ -1,8 +1,9 @@
 import {
+  buildNoGoAreaRequest,
+  buildVirtualWallRequest,
   fetchActiveAlignment as fetchRosActiveAlignment,
   fetchCoverageZoneDetail as fetchRosCoverageZoneDetail,
   fetchCoverageZones as fetchRosCoverageZones,
-  fetchCurrentMap as fetchRosCurrentMap,
   fetchNoGoAreaDetail as fetchRosNoGoAreaDetail,
   fetchNoGoAreas as fetchRosNoGoAreas,
   fetchVirtualWallDetail as fetchRosVirtualWallDetail,
@@ -19,11 +20,34 @@ import {
   addVirtualWall as addRosVirtualWall,
   modifyVirtualWall as modifyRosVirtualWall,
   deleteVirtualWall as deleteRosVirtualWall,
+  normalizeAlignment,
+  normalizeAreaEntity,
+  normalizeCoverageCommit,
+  normalizeCoveragePreview,
+  normalizeMapPayload,
+  normalizeRectZonePreview,
+  normalizeZonePlanPath,
+  resolveRequestedMapName,
 } from '../ros/services'
 import {
   importCurrentMapAsset as importRosCurrentMapAsset,
   fetchMapCatalog as fetchRosMapCatalog,
 } from '../ros/mapCatalogServices'
+import { fetchOdometryStatus } from '../ros/odometryServices'
+import {
+  ODOMETRY_STATUS_QUERY_CONTRACT,
+  PROFILE_CATALOG_QUERY_CONTRACT,
+  SLAM_JOB_QUERY_CONTRACT,
+  SLAM_STATUS_QUERY_CONTRACT,
+  SYSTEM_READINESS_QUERY_CONTRACT,
+} from '../ros/queryContracts'
+import {
+  EXECUTION_SERVICE,
+  MAP_CATALOG_SERVICE,
+  SCHEDULE_SERVICE,
+  SITE_SERVICE_NAMES,
+  TASK_SERVICE,
+} from '../ros/serviceNames'
 import {
   addCleanSchedule,
   deleteCleanSchedule,
@@ -32,14 +56,13 @@ import {
   modifyCleanSchedule,
 } from '../ros/scheduleServices'
 import {
-  cancelSlamWorkflowJob,
-  submitPrepareForTask,
+  getSlamWorkflowJob as fetchRosSlamWorkflowJob,
+  getSlamWorkflowState as fetchRosSlamWorkflowState,
   submitRelocalize,
-  submitSaveMap,
+  submitSaveMapping,
   submitStartMapping,
   submitStopMapping,
-  submitSwitchMapAndLocalize,
-  syncSlamRuntimeState,
+  submitSwitchMap,
 } from '../ros/slamWorkflowServices'
 import { fetchProfileCatalog } from '../ros/profileCatalogServices'
 import {
@@ -51,16 +74,58 @@ import {
 } from '../ros/taskServices'
 import { executeTaskCommand as executeRosTaskCommand } from '../ros/executionServices'
 import { fetchSystemReadiness } from '../ros/systemReadinessServices'
-import { fetchCapabilityStatuses } from './capabilityProbe'
+import {
+  exportGatewayDiagnostics,
+  fetchCapabilityMap,
+  fetchGatewayOdometryState,
+  fetchGatewayProfileCatalog,
+  fetchGatewaySlamJob,
+  fetchGatewaySlamState,
+  fetchGatewaySystemReadiness,
+  requestConfirmWorkbenchAlignment,
+  requestCreateWorkbenchNoGoArea,
+  requestCreateWorkbenchVirtualWall,
+  requestMapCatalog,
+  requestWorkbenchAlignment,
+  requestWorkbenchCoverageCommit,
+  requestWorkbenchCoveragePreview,
+  requestWorkbenchNoGoAreaDetail,
+  requestWorkbenchNoGoAreaList,
+  requestWorkbenchRectZonePreview,
+  requestWorkbenchVirtualWallDetail,
+  requestWorkbenchVirtualWallList,
+  requestWorkbenchZoneDetail,
+  requestWorkbenchZoneList,
+  requestWorkbenchZonePlanPath,
+  requestDeleteWorkbenchNoGoArea,
+  requestDeleteWorkbenchVirtualWall,
+  requestDeleteWorkbenchZone,
+  requestImportCurrentMapAsset,
+  requestMapImportPreflight,
+  requestUpdateWorkbenchNoGoArea,
+  requestUpdateWorkbenchVirtualWall,
+  requestCreateSchedule,
+  requestCreateTask,
+  requestDeleteSchedule,
+  requestDeleteTask,
+  requestExecutionCommand,
+  requestScheduleDetail,
+  requestScheduleList,
+  requestSlamAction,
+  requestTaskDetail,
+  requestTaskList,
+  requestUpdateSchedule,
+  requestUpdateTask,
+} from './siteGatewayClient'
 
 import {
   APP_MODULE_KEYS,
   getAppConfig,
-  getDefaultRolePolicy,
+  getApiBaseUrl,
   isModuleEnabled,
   sanitizeAppConfig,
 } from '../../config/appConfig'
-import { getRosConnectionManager } from '../ros/client'
+import { fetchCurrentMapFromWorker } from '../ros/mapWorkerClient'
 import { getRosDebugSnapshot } from '../ros/debug'
 import { useAppShellStore } from '../../stores/appShellStore'
 import { useRuntimeMonitorStore } from '../../stores/runtimeMonitorStore'
@@ -87,10 +152,37 @@ import type {
 } from '../../types/slam-workflow'
 import type { SystemReadinessServiceResult } from '../../types/systemReadiness'
 import type { TaskDraftInput, TaskEntity } from '../../types/task'
-import type { RosServiceRequest } from '../../types/ros'
+import type { RosConnectionSnapshot, RosServiceRequest } from '../../types/ros'
 
-export function getConnectionStatus() {
-  return getRosConnectionManager().getSnapshot()
+const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
+
+function buildGatewayWorkbenchUrl(pathname: string) {
+  const baseUrl = getApiBaseUrl()
+
+  if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) {
+    return new URL(pathname.replace(/^\//, ''), `${baseUrl.replace(/\/+$/, '')}/`).toString()
+  }
+
+  const normalizedPath = `${baseUrl.replace(/\/+$/, '')}${pathname.startsWith('/') ? pathname : `/${pathname}`}`
+
+  if (typeof window !== 'undefined') {
+    return new URL(normalizedPath, window.location.origin).toString()
+  }
+
+  return normalizedPath
+}
+
+export function getConnectionStatus(): RosConnectionSnapshot {
+  return {
+    status: 'mock',
+    url: 'ws://127.0.0.1:4173/ws/rosbridge',
+    isConnected: true,
+    lastError: null,
+    connectedAt: Date.now(),
+    sessionId: 1,
+    gatewayStatus: 'mock',
+    gatewayLastError: null,
+  }
 }
 
 export function getRuntimeSnapshot() {
@@ -108,14 +200,7 @@ export function getAuditEvents() {
 }
 
 export function getEnabledCapabilities() {
-  const rolePolicy = getDefaultRolePolicy()
-  const capabilitySet = new Set<CapabilityFlag>()
-
-  for (const role of Object.keys(rolePolicy) as Array<keyof typeof rolePolicy>) {
-    for (const capability of rolePolicy[role] ?? []) {
-      capabilitySet.add(capability)
-    }
-  }
+  const capabilitySet = new Set<CapabilityFlag>(useAppShellStore.getState().grantedCapabilities)
 
   for (const moduleKey of APP_MODULE_KEYS) {
     if (isModuleEnabled(moduleKey)) {
@@ -158,16 +243,29 @@ export function getEnabledCapabilities() {
 }
 
 export async function getCapabilities(enabledCapabilities: CapabilityFlag[]) {
-  return fetchCapabilityStatuses(getConnectionStatus(), enabledCapabilities)
+  if (USE_MOCK_DATA) {
+    const { fetchCapabilityStatuses } = await import('./capabilityProbe')
+    return fetchCapabilityStatuses(getConnectionStatus(), enabledCapabilities)
+  }
+
+  return fetchCapabilityMap()
 }
 
 export async function exportDiagnostics(): Promise<{
   filename: string
   bundle: RobotDiagnosticsBundle
 }> {
+  if (!USE_MOCK_DATA) {
+    return exportGatewayDiagnostics() as Promise<{
+      filename: string
+      bundle: RobotDiagnosticsBundle
+    }>
+  }
+
   const connection = getConnectionStatus()
   const runtimeStore = useRuntimeMonitorStore.getState()
   const rosDebug = getRosDebugSnapshot()
+  const { fetchCapabilityStatuses } = await import('./capabilityProbe')
   const capabilityMap = await fetchCapabilityStatuses(
     connection,
     getEnabledCapabilities(),
@@ -239,13 +337,17 @@ export async function exportDiagnostics(): Promise<{
 }
 
 export async function queryProfileCatalog(options: {
-  profileKind: Exclude<ProfileKind, ''>
+  profileKind: ProfileKind
   includeDisabled?: boolean
   mapName?: string | null
 }) {
   assertCapabilityAllowed('profileCatalog', 'Profile catalog 查询')
 
   try {
+    if (!USE_MOCK_DATA) {
+      return await fetchGatewayProfileCatalog(options)
+    }
+
     return await fetchProfileCatalog(options)
   } catch (error) {
     throw normalizeGatewayError(error, {
@@ -253,13 +355,17 @@ export async function queryProfileCatalog(options: {
       source: 'robot-gateway',
       message: 'Profile catalog 查询失败。',
       recoverable: true,
-      missingDependency: '/database_server/profile_catalog_service',
+      missingDependency: PROFILE_CATALOG_QUERY_CONTRACT.canonical.serviceName,
     })
   }
 }
 
 export async function fetchMapCatalog() {
   try {
+    if (!USE_MOCK_DATA) {
+      return await requestMapCatalog()
+    }
+
     return await fetchRosMapCatalog()
   } catch (error) {
     throw normalizeGatewayError(error, {
@@ -267,7 +373,7 @@ export async function fetchMapCatalog() {
       source: 'robot-gateway',
       message: '地图目录加载失败。',
       recoverable: true,
-      missingDependency: '/clean_robot_server/map_server',
+      missingDependency: MAP_CATALOG_SERVICE.canonicalName,
     })
   }
 }
@@ -276,6 +382,10 @@ export async function getSystemReadiness(taskId: number): Promise<SystemReadines
   assertCapabilityAllowed('systemReadiness', '系统就绪检查')
 
   try {
+    if (!USE_MOCK_DATA) {
+      return await fetchGatewaySystemReadiness(taskId)
+    }
+
     return await fetchSystemReadiness(taskId)
   } catch (error) {
     throw normalizeGatewayError(error, {
@@ -283,7 +393,67 @@ export async function getSystemReadiness(taskId: number): Promise<SystemReadines
       source: 'robot-gateway',
       message: '系统就绪检查失败。',
       recoverable: true,
-      missingDependency: '/coverage_task_manager/get_system_readiness',
+      missingDependency: SYSTEM_READINESS_QUERY_CONTRACT.canonical.serviceName,
+    })
+  }
+}
+
+export async function getOdometryState() {
+  assertCapabilityAllowed('slamWorkbench', '閲岀▼璁″仴搴锋鏌?')
+
+  try {
+    if (!USE_MOCK_DATA) {
+      return await fetchGatewayOdometryState()
+    }
+
+    return await fetchOdometryStatus()
+  } catch (error) {
+    throw normalizeGatewayError(error, {
+      code: 'ODOMETRY_STATUS_FAILED',
+      source: 'robot-gateway',
+      message: '閲岀▼璁″仴搴锋鏌ュけ璐ャ€?',
+      recoverable: true,
+      missingDependency: ODOMETRY_STATUS_QUERY_CONTRACT.canonical.serviceName,
+    })
+  }
+}
+
+export async function getSlamState() {
+  assertCapabilityAllowed('slamWorkbench', 'SLAM 状态查询')
+
+  try {
+    if (!USE_MOCK_DATA) {
+      return await fetchGatewaySlamState()
+    }
+
+    return await fetchRosSlamWorkflowState()
+  } catch (error) {
+    throw normalizeGatewayError(error, {
+      code: 'SLAM_STATE_FAILED',
+      source: 'robot-gateway',
+      message: 'SLAM 状态查询失败。',
+      recoverable: true,
+      missingDependency: SLAM_STATUS_QUERY_CONTRACT.canonical.serviceName,
+    })
+  }
+}
+
+export async function getSlamJob(jobId: string) {
+  assertCapabilityAllowed('slamWorkbench', 'SLAM 作业查询')
+
+  try {
+    if (!USE_MOCK_DATA) {
+      return await fetchGatewaySlamJob(jobId)
+    }
+
+    return await fetchRosSlamWorkflowJob(jobId)
+  } catch (error) {
+    throw normalizeGatewayError(error, {
+      code: 'SLAM_JOB_FAILED',
+      source: 'robot-gateway',
+      message: 'SLAM 作业查询失败。',
+      recoverable: true,
+      missingDependency: SLAM_JOB_QUERY_CONTRACT.canonical.serviceName,
     })
   }
 }
@@ -348,11 +518,81 @@ async function runWorkbenchMutation<T>(
   }
 }
 
+function requireWorkbenchValue<T>(
+  value: T | null | undefined,
+  errorMessage: string,
+) {
+  if (value === null || value === undefined) {
+    throw new Error(errorMessage)
+  }
+
+  return value
+}
+
+function pickStringFromRecords(
+  records: Array<Record<string, unknown> | null | undefined>,
+  keys: string[],
+) {
+  for (const record of records) {
+    if (!record) {
+      continue
+    }
+
+    for (const key of keys) {
+      const value = record[key]
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value.trim()
+      }
+    }
+  }
+
+  return ''
+}
+
+function resolveRequestedMapRevisionId(
+  map: MapEntity | null,
+  alignment?: MapAlignment | null,
+) {
+  return pickStringFromRecords([map?.raw, alignment?.raw], [
+    'map_revision_id',
+    'mapRevisionId',
+    'active_revision_id',
+    'activeRevisionId',
+    'latest_head_revision_id',
+    'latestHeadRevisionId',
+    'runtime_map_revision_id',
+    'runtimeMapRevisionId',
+    'active_map_revision_id',
+    'activeMapRevisionId',
+    'revision_id',
+    'revisionId',
+  ])
+}
+
 export function fetchCurrentMap() {
   return runWorkbenchRead(
     '加载当前地图',
-    '/clean_robot_server/map_server',
-    () => fetchRosCurrentMap(),
+    MAP_CATALOG_SERVICE.canonicalName,
+    async () => {
+      if (!USE_MOCK_DATA) {
+        const currentMapUrl = buildGatewayWorkbenchUrl('/maps/current')
+        return fetchCurrentMapFromWorker(currentMapUrl, 'http')
+      }
+
+      const mockMap = normalizeMapPayload({
+        id: 'mock-map-001',
+        map_name: 'Demo Lobby',
+        display_name: 'Demo Lobby',
+        map_id: 'mock-map-001',
+        is_active: true,
+      })
+
+      if (!mockMap) {
+        throw new Error('Current map mock payload returned no usable map payload.')
+      }
+
+      return mockMap
+    },
   )
 }
 
@@ -362,8 +602,18 @@ export function fetchActiveAlignment(
 ) {
   return runWorkbenchRead(
     '加载地图对齐配置',
-    '/database_server/map_alignment_service',
-    () => fetchRosActiveAlignment(map, mapName),
+    SITE_SERVICE_NAMES.alignment,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return fetchRosActiveAlignment(map, mapName)
+      }
+
+      const payload = await requestWorkbenchAlignment(
+        resolveRequestedMapName(map, mapName),
+      )
+
+      return payload === null ? null : normalizeAlignment(payload)
+    },
   )
 }
 
@@ -375,14 +625,54 @@ export function confirmMapAlignmentByPoints(options: {
 }) {
   return runWorkbenchMutation(
     '确认地图对齐',
-    '/database_server/map_alignment_by_points_service',
+    SITE_SERVICE_NAMES.alignmentByPoints,
     {
       mapName: options.mapName ?? options.map?.name ?? '',
       points: options.points,
       alignmentVersion: options.alignment?.alignmentVersion ?? '',
     },
-    '/database_server/map_alignment_by_points_service',
-    () => confirmRosMapAlignmentByPoints(options),
+    SITE_SERVICE_NAMES.alignmentByPoints,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return confirmRosMapAlignmentByPoints(options)
+      }
+
+      const mapName = resolveRequestedMapName(options.map, options.mapName)
+
+      if (!mapName) {
+        throw new Error('The current map is not ready for alignment.')
+      }
+
+      const payload = await requestConfirmWorkbenchAlignment({
+        map_name: mapName,
+        alignment_version: options.alignment?.alignmentVersion ?? '',
+        raw_frame: options.alignment?.rawFrame ?? 'map',
+        aligned_frame: options.alignment?.alignedFrame ?? 'site_map',
+        p1: {
+          x: options.points[0].x,
+          y: options.points[0].y,
+          z: 0,
+        },
+        p2: {
+          x: options.points[1].x,
+          y: options.points[1].y,
+          z: 0,
+        },
+        pivot_x: options.alignment?.pivot?.x ?? 0,
+        pivot_y: options.alignment?.pivot?.y ?? 0,
+        source:
+          (typeof options.alignment?.raw.source === 'string'
+            ? options.alignment.raw.source
+            : null) ?? 'frontend',
+        status: options.alignment?.status ?? 'active',
+        activate: true,
+      })
+
+      return requireWorkbenchValue(
+        normalizeAlignment(payload),
+        'Alignment confirm service returned no usable config.',
+      )
+    },
   )
 }
 
@@ -395,8 +685,39 @@ export function previewRectZoneByPoints(options: {
 }) {
   return runWorkbenchRead(
     '矩形区域预览',
-    '/database_server/rect_zone_preview_service',
-    () => previewRosRectZoneByPoints(options),
+    SITE_SERVICE_NAMES.rectZonePreview,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return previewRosRectZoneByPoints(options)
+      }
+
+      const mapName = resolveRequestedMapName(options.map, options.mapName)
+
+      if (!mapName) {
+        throw new Error('The current map is not ready for zone creation.')
+      }
+
+      const payload = await requestWorkbenchRectZonePreview({
+        map_name: mapName,
+        alignment_version: options.alignment?.alignmentVersion ?? '',
+        p1: {
+          x: options.points[0].x,
+          y: options.points[0].y,
+          z: 0,
+        },
+        p2: {
+          x: options.points[1].x,
+          y: options.points[1].y,
+          z: 0,
+        },
+        min_side_m: options.minSideM ?? 0.2,
+      })
+
+      return requireWorkbenchValue(
+        normalizeRectZonePreview(payload),
+        'Rect zone preview service returned no usable display_region.',
+      )
+    },
   )
 }
 
@@ -409,8 +730,42 @@ export function previewCoverageRegion(options: {
 }) {
   return runWorkbenchRead(
     '覆盖区域预览',
-    '/database_server/coverage_preview_service',
-    () => previewRosCoverageRegion(options),
+    SITE_SERVICE_NAMES.coveragePreview,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return previewRosCoverageRegion(options)
+      }
+
+      const mapName = resolveRequestedMapName(options.map, options.mapName)
+
+      if (!mapName) {
+        throw new Error('The current map is not ready for coverage preview.')
+      }
+
+      const mapRevisionId = resolveRequestedMapRevisionId(options.map, options.alignment)
+
+      if (!mapRevisionId) {
+        throw new Error('The current map revision is not ready for coverage preview.')
+      }
+
+      if (!options.profileName.trim()) {
+        throw new Error('A profile name is required before previewing a zone.')
+      }
+
+      const payload = await requestWorkbenchCoveragePreview({
+        map_name: mapName,
+        map_revision_id: mapRevisionId,
+        alignment_version: options.alignment?.alignmentVersion ?? '',
+        region: options.region,
+        profile_name: options.profileName.trim(),
+        debug_publish_markers: false,
+      })
+
+      return requireWorkbenchValue(
+        normalizeCoveragePreview(payload),
+        'Coverage preview service returned no usable preview data.',
+      )
+    },
   )
 }
 
@@ -426,7 +781,7 @@ export function commitCoverageRegion(options: {
 }) {
   return runWorkbenchMutation(
     options.zoneId ? '更新覆盖区域' : '创建覆盖区域',
-    '/database_server/coverage_commit_service',
+    SITE_SERVICE_NAMES.coverageCommit,
     {
       mapName: options.mapName ?? options.map?.name ?? '',
       zoneId: options.zoneId ?? '',
@@ -434,8 +789,49 @@ export function commitCoverageRegion(options: {
       profileName: options.profileName,
       baseZoneVersion: options.baseZoneVersion ?? 0,
     },
-    '/database_server/coverage_commit_service',
-    () => commitRosCoverageRegion(options),
+    SITE_SERVICE_NAMES.coverageCommit,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return commitRosCoverageRegion(options)
+      }
+
+      const mapName = resolveRequestedMapName(options.map, options.mapName)
+
+      if (!mapName) {
+        throw new Error('The current map is not ready for zone commit.')
+      }
+
+      const mapRevisionId = resolveRequestedMapRevisionId(options.map, options.alignment)
+
+      if (!mapRevisionId) {
+        throw new Error('The current map revision is not ready for zone commit.')
+      }
+
+      if (!options.displayName.trim()) {
+        throw new Error('A zone display name is required before commit.')
+      }
+
+      if (!options.profileName.trim()) {
+        throw new Error('A profile name is required before commit.')
+      }
+
+      const payload = await requestWorkbenchCoverageCommit({
+        map_name: mapName,
+        map_revision_id: mapRevisionId,
+        alignment_version: options.alignment?.alignmentVersion ?? '',
+        zone_id: options.zoneId ?? '',
+        base_zone_version: options.baseZoneVersion ?? 0,
+        display_name: options.displayName.trim(),
+        region: options.region,
+        profile_name: options.profileName.trim(),
+        set_active_plan: true,
+      })
+
+      return requireWorkbenchValue(
+        normalizeCoverageCommit(payload),
+        'Coverage commit service returned no usable zone result.',
+      )
+    },
   )
 }
 
@@ -445,8 +841,18 @@ export function fetchCoverageZones(
 ) {
   return runWorkbenchRead(
     '加载覆盖区域列表',
-    '/database_server/coverage_zone_service',
-    () => fetchRosCoverageZones(map, mapName),
+    SITE_SERVICE_NAMES.zone,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return fetchRosCoverageZones(map, mapName)
+      }
+
+      const records = await requestWorkbenchZoneList(
+        resolveRequestedMapName(map, mapName),
+      )
+
+      return records.map((record, index) => normalizeAreaEntity(record, 'zone', index))
+    },
   )
 }
 
@@ -458,8 +864,24 @@ export function fetchCoverageZoneDetail(options: {
 }) {
   return runWorkbenchRead(
     '加载覆盖区域详情',
-    '/database_server/coverage_zone_service',
-    () => fetchRosCoverageZoneDetail(options),
+    SITE_SERVICE_NAMES.zone,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return fetchRosCoverageZoneDetail(options)
+      }
+
+      if (!options.zoneId.trim()) {
+        throw new Error('A zone_id is required before loading zone detail.')
+      }
+
+      const record = await requestWorkbenchZoneDetail({
+        zoneId: options.zoneId,
+        mapName: resolveRequestedMapName(options.map, options.mapName),
+        profileName: options.profileName,
+      })
+
+      return record ? normalizeAreaEntity(record, 'zone', 0) : null
+    },
   )
 }
 
@@ -472,8 +894,28 @@ export function fetchZonePlanPath(options: {
 }) {
   return runWorkbenchRead(
     '加载区域规划路径',
-    '/database_server/zone_plan_path_service',
-    () => fetchRosZonePlanPath(options),
+    SITE_SERVICE_NAMES.zonePlanPath,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return fetchRosZonePlanPath(options)
+      }
+
+      if (!options.zoneId.trim()) {
+        throw new Error('A zone_id is required before loading a zone plan path.')
+      }
+
+      const payload = await requestWorkbenchZonePlanPath({
+        zoneId: options.zoneId,
+        mapName: resolveRequestedMapName(options.map, options.mapName),
+        alignmentVersion: options.alignmentVersion,
+        planProfileName: options.planProfileName,
+      })
+
+      return requireWorkbenchValue(
+        normalizeZonePlanPath(payload),
+        'Zone plan path service returned no usable path result.',
+      )
+    },
   )
 }
 
@@ -484,21 +926,43 @@ export function deleteCoverageZone(options: {
 }) {
   return runWorkbenchMutation(
     '删除覆盖区域',
-    '/database_server/coverage_zone_service',
+    SITE_SERVICE_NAMES.zone,
     {
       mapName: options.mapName ?? options.map?.name ?? '',
       zoneId: options.zoneId,
     },
-    '/database_server/coverage_zone_service',
-    () => deleteRosCoverageZone(options),
+    SITE_SERVICE_NAMES.zone,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return deleteRosCoverageZone(options)
+      }
+
+      if (!options.zoneId.trim()) {
+        throw new Error('A zone_id is required before deleting a zone.')
+      }
+
+      return requestDeleteWorkbenchZone({
+        zoneId: options.zoneId,
+        mapName: resolveRequestedMapName(options.map, options.mapName),
+      })
+    },
   )
 }
 
 export function fetchNoGoAreas(map: MapEntity | null) {
   return runWorkbenchRead(
     '加载禁行区列表',
-    '/database_server/no_go_area_service',
-    () => fetchRosNoGoAreas(map),
+    SITE_SERVICE_NAMES.noGoArea,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return fetchRosNoGoAreas(map)
+      }
+
+      const records = await requestWorkbenchNoGoAreaList(resolveRequestedMapName(map))
+      return records.map((record, index) =>
+        normalizeAreaEntity(record, 'noGoArea', index),
+      )
+    },
   )
 }
 
@@ -509,8 +973,19 @@ export function fetchNoGoAreaDetail(options: {
 }) {
   return runWorkbenchRead(
     '加载禁行区详情',
-    '/database_server/no_go_area_service',
-    () => fetchRosNoGoAreaDetail(options),
+    SITE_SERVICE_NAMES.noGoArea,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return fetchRosNoGoAreaDetail(options)
+      }
+
+      const record = await requestWorkbenchNoGoAreaDetail({
+        areaId: options.areaId,
+        mapName: resolveRequestedMapName(options.map, options.mapName),
+      })
+
+      return record ? normalizeAreaEntity(record, 'noGoArea', 0) : null
+    },
   )
 }
 
@@ -526,15 +1001,46 @@ export function addNoGoArea(options: {
 }) {
   return runWorkbenchMutation(
     '创建禁行区',
-    '/database_server/no_go_area_service',
+    SITE_SERVICE_NAMES.noGoArea,
     {
       mapName: options.mapName ?? options.map?.name ?? '',
       areaId: options.areaId ?? '',
       displayName: options.displayName,
       enabled: options.enabled ?? true,
     },
-    '/database_server/no_go_area_service',
-    () => addRosNoGoArea(options),
+    SITE_SERVICE_NAMES.noGoArea,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return addRosNoGoArea(options)
+      }
+
+      const payload = await requestCreateWorkbenchNoGoArea({
+        operation: 2,
+        map_name: resolveRequestedMapName(options.map, options.mapName),
+        area_id: options.areaId?.trim() ?? '',
+        alignment_version: options.alignment?.alignmentVersion ?? '',
+        area: buildNoGoAreaRequest({
+          map: options.map,
+          mapName: options.mapName,
+          alignment: options.alignment,
+          areaId: options.areaId,
+          displayName: options.displayName,
+          enabled: options.enabled ?? true,
+          displayRegion: options.displayRegion,
+          displayFrame: options.displayFrame,
+        }),
+        include_disabled: true,
+      })
+
+      return {
+        area: payload.entity
+          ? normalizeAreaEntity(payload.entity, 'noGoArea', 0)
+          : null,
+        constraintVersion: payload.constraintVersion,
+        warnings: payload.warnings,
+        raw: payload.raw,
+      }
+    },
   )
 }
 
@@ -550,15 +1056,57 @@ export function modifyNoGoArea(options: {
 }) {
   return runWorkbenchMutation(
     '更新禁行区',
-    '/database_server/no_go_area_service',
+    SITE_SERVICE_NAMES.noGoArea,
     {
       mapName: options.mapName ?? options.map?.name ?? '',
       areaId: options.area.id,
       displayName: options.displayName,
       enabled: options.enabled ?? true,
     },
-    '/database_server/no_go_area_service',
-    () => modifyRosNoGoArea(options),
+    SITE_SERVICE_NAMES.noGoArea,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return modifyRosNoGoArea(options)
+      }
+
+      const payload = await requestUpdateWorkbenchNoGoArea(options.area.id, {
+        operation: 3,
+        map_name: resolveRequestedMapName(options.map, options.mapName),
+        area_id: options.area.id,
+        alignment_version: options.alignment?.alignmentVersion ?? '',
+        area: buildNoGoAreaRequest({
+          map: options.map,
+          mapName: options.mapName,
+          alignment: options.alignment,
+          areaId: options.area.id,
+          displayName: options.displayName,
+          enabled:
+            options.enabled ??
+            (typeof options.area.raw.enabled === 'boolean'
+              ? options.area.raw.enabled
+              : true),
+          displayRegion: options.displayRegion,
+          displayFrame: options.displayFrame,
+          baseArea: options.area,
+        }),
+        include_disabled: true,
+      })
+
+      const area = payload.entity
+        ? normalizeAreaEntity(payload.entity, 'noGoArea', 0)
+        : null
+
+      if (area && area.id !== options.area.id) {
+        throw new Error('No-go modify returned a different area_id than the selected item.')
+      }
+
+      return {
+        area,
+        constraintVersion: payload.constraintVersion,
+        warnings: payload.warnings,
+        raw: payload.raw,
+      }
+    },
   )
 }
 
@@ -569,21 +1117,39 @@ export function deleteNoGoArea(options: {
 }) {
   return runWorkbenchMutation(
     '删除禁行区',
-    '/database_server/no_go_area_service',
+    SITE_SERVICE_NAMES.noGoArea,
     {
       mapName: options.mapName ?? options.map?.name ?? '',
       areaId: options.areaId,
     },
-    '/database_server/no_go_area_service',
-    () => deleteRosNoGoArea(options),
+    SITE_SERVICE_NAMES.noGoArea,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return deleteRosNoGoArea(options)
+      }
+
+      return requestDeleteWorkbenchNoGoArea({
+        areaId: options.areaId,
+        mapName: resolveRequestedMapName(options.map, options.mapName),
+      })
+    },
   )
 }
 
 export function fetchVirtualWalls(map: MapEntity | null) {
   return runWorkbenchRead(
     '加载虚拟墙列表',
-    '/database_server/virtual_wall_service',
-    () => fetchRosVirtualWalls(map),
+    SITE_SERVICE_NAMES.virtualWall,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return fetchRosVirtualWalls(map)
+      }
+
+      const records = await requestWorkbenchVirtualWallList(resolveRequestedMapName(map))
+      return records.map((record, index) =>
+        normalizeAreaEntity(record, 'virtualWall', index),
+      )
+    },
   )
 }
 
@@ -594,8 +1160,19 @@ export function fetchVirtualWallDetail(options: {
 }) {
   return runWorkbenchRead(
     '加载虚拟墙详情',
-    '/database_server/virtual_wall_service',
-    () => fetchRosVirtualWallDetail(options),
+    SITE_SERVICE_NAMES.virtualWall,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return fetchRosVirtualWallDetail(options)
+      }
+
+      const record = await requestWorkbenchVirtualWallDetail({
+        wallId: options.wallId,
+        mapName: resolveRequestedMapName(options.map, options.mapName),
+      })
+
+      return record ? normalizeAreaEntity(record, 'virtualWall', 0) : null
+    },
   )
 }
 
@@ -612,7 +1189,7 @@ export function addVirtualWall(options: {
 }) {
   return runWorkbenchMutation(
     '创建虚拟墙',
-    '/database_server/virtual_wall_service',
+    SITE_SERVICE_NAMES.virtualWall,
     {
       mapName: options.mapName ?? options.map?.name ?? '',
       wallId: options.wallId ?? '',
@@ -620,8 +1197,40 @@ export function addVirtualWall(options: {
       enabled: options.enabled ?? true,
       bufferM: options.bufferM,
     },
-    '/database_server/virtual_wall_service',
-    () => addRosVirtualWall(options),
+    SITE_SERVICE_NAMES.virtualWall,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return addRosVirtualWall(options)
+      }
+
+      const payload = await requestCreateWorkbenchVirtualWall({
+        operation: 2,
+        map_name: resolveRequestedMapName(options.map, options.mapName),
+        wall_id: options.wallId?.trim() ?? '',
+        alignment_version: options.alignment?.alignmentVersion ?? '',
+        wall: buildVirtualWallRequest({
+          map: options.map,
+          mapName: options.mapName,
+          alignment: options.alignment,
+          wallId: options.wallId,
+          displayName: options.displayName,
+          enabled: options.enabled ?? true,
+          displayPath: options.displayPath,
+          displayFrame: options.displayFrame,
+          bufferM: options.bufferM,
+        }),
+        include_disabled: true,
+      })
+
+      return {
+        wall: payload.entity
+          ? normalizeAreaEntity(payload.entity, 'virtualWall', 0)
+          : null,
+        constraintVersion: payload.constraintVersion,
+        warnings: payload.warnings,
+        raw: payload.raw,
+      }
+    },
   )
 }
 
@@ -638,7 +1247,7 @@ export function modifyVirtualWall(options: {
 }) {
   return runWorkbenchMutation(
     '更新虚拟墙',
-    '/database_server/virtual_wall_service',
+    SITE_SERVICE_NAMES.virtualWall,
     {
       mapName: options.mapName ?? options.map?.name ?? '',
       wallId: options.wall.id,
@@ -646,8 +1255,51 @@ export function modifyVirtualWall(options: {
       enabled: options.enabled ?? true,
       bufferM: options.bufferM,
     },
-    '/database_server/virtual_wall_service',
-    () => modifyRosVirtualWall(options),
+    SITE_SERVICE_NAMES.virtualWall,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return modifyRosVirtualWall(options)
+      }
+
+      const payload = await requestUpdateWorkbenchVirtualWall(options.wall.id, {
+        operation: 3,
+        map_name: resolveRequestedMapName(options.map, options.mapName),
+        wall_id: options.wall.id,
+        alignment_version: options.alignment?.alignmentVersion ?? '',
+        wall: buildVirtualWallRequest({
+          map: options.map,
+          mapName: options.mapName,
+          alignment: options.alignment,
+          wallId: options.wall.id,
+          displayName: options.displayName,
+          enabled:
+            options.enabled ??
+            (typeof options.wall.raw.enabled === 'boolean'
+              ? options.wall.raw.enabled
+              : true),
+          displayPath: options.displayPath,
+          displayFrame: options.displayFrame,
+          bufferM: options.bufferM,
+          baseWall: options.wall,
+        }),
+        include_disabled: true,
+      })
+
+      const wall = payload.entity
+        ? normalizeAreaEntity(payload.entity, 'virtualWall', 0)
+        : null
+
+      if (wall && wall.id !== options.wall.id) {
+        throw new Error('Virtual wall modify returned a different wall_id than the selected item.')
+      }
+
+      return {
+        wall,
+        constraintVersion: payload.constraintVersion,
+        warnings: payload.warnings,
+        raw: payload.raw,
+      }
+    },
   )
 }
 
@@ -658,27 +1310,49 @@ export function deleteVirtualWall(options: {
 }) {
   return runWorkbenchMutation(
     '删除虚拟墙',
-    '/database_server/virtual_wall_service',
+    SITE_SERVICE_NAMES.virtualWall,
     {
       mapName: options.mapName ?? options.map?.name ?? '',
       wallId: options.wallId,
     },
-    '/database_server/virtual_wall_service',
-    () => deleteRosVirtualWall(options),
+    SITE_SERVICE_NAMES.virtualWall,
+    async () => {
+      if (USE_MOCK_DATA) {
+        return deleteRosVirtualWall(options)
+      }
+
+      return requestDeleteWorkbenchVirtualWall({
+        wallId: options.wallId,
+        mapName: resolveRequestedMapName(options.map, options.mapName),
+      })
+    },
   )
 }
 
 export function importCurrentMapAsset(input: ImportCurrentMapAssetInput) {
   return runWorkbenchMutation(
     '导入当前地图资产',
-    '/clean_robot_server/map_server',
+    MAP_CATALOG_SERVICE.canonicalName,
     {
       mapName: input.mapName,
       setActive: input.setActive,
     },
-    '/clean_robot_server/map_server',
-    () => importRosCurrentMapAsset(input),
+    MAP_CATALOG_SERVICE.canonicalName,
+    () => (USE_MOCK_DATA ? importRosCurrentMapAsset(input) : requestImportCurrentMapAsset(input)),
   )
+}
+
+export function checkMapImportPreflight(mapName: string) {
+  if (USE_MOCK_DATA) {
+    return Promise.resolve({
+      canImport: true,
+      status: 'MAP_IMPORT_READY',
+      message: 'Mock 模式已跳过 pbstream 文件检查。',
+      expectedPath: null,
+    })
+  }
+
+  return requestMapImportPreflight(mapName)
 }
 
 export async function executeTaskCommand(
@@ -687,12 +1361,16 @@ export async function executeTaskCommand(
 ) {
   try {
     assertCapabilityAllowed('executionControl', `任务执行命令 ${command}`)
+    if (!USE_MOCK_DATA) {
+      return await requestExecutionCommand(command, taskId)
+    }
+
     const result = await executeRosTaskCommand(command, taskId)
 
     recordAuditEvent({
       category: 'task',
       action: command,
-      target: `/exe_task_server task_id=${taskId}`,
+      target: `${EXECUTION_SERVICE.canonicalName} task_id=${taskId}`,
       status: result.success ? 'success' : 'failed',
       message: result.message || 'execution service completed',
       detail: {
@@ -714,7 +1392,7 @@ export async function executeTaskCommand(
     recordAuditEvent({
       category: 'task',
       action: command,
-      target: `/exe_task_server task_id=${taskId}`,
+      target: `${EXECUTION_SERVICE.canonicalName} task_id=${taskId}`,
       status: normalizedError.requiresEngineer ? 'blocked' : 'failed',
       message: normalizedError.message,
       detail: {
@@ -813,6 +1491,26 @@ export async function manageTask(options: {
 }) {
   try {
     assertCapabilityAllowed('taskManagement', `任务操作 ${options.action}`)
+    if (!USE_MOCK_DATA) {
+      switch (options.action) {
+        case 'list':
+          return await requestTaskList()
+        case 'detail':
+          return await requestTaskDetail(options.taskId ?? 0)
+        case 'create':
+          return await requestCreateTask(options.input as TaskDraftInput)
+        case 'update':
+          return await requestUpdateTask(
+            options.task as TaskEntity,
+            options.input as TaskDraftInput,
+          )
+        case 'delete':
+          return await requestDeleteTask(options.taskId ?? 0)
+        default:
+          return null
+      }
+    }
+
     let result: unknown
 
     switch (options.action) {
@@ -838,7 +1536,7 @@ export async function manageTask(options: {
     recordAuditEvent({
       category: 'system',
       action: `task:${options.action}`,
-      target: '/database_server/clean_task_service',
+      target: TASK_SERVICE.canonicalName,
       status: 'success',
       message: '任务管理操作已完成。',
       detail: options as Record<string, unknown>,
@@ -850,7 +1548,7 @@ export async function manageTask(options: {
     recordAuditEvent({
       category: 'system',
       action: `task:${options.action}`,
-      target: '/database_server/clean_task_service',
+      target: TASK_SERVICE.canonicalName,
       status: normalizedError.requiresEngineer ? 'blocked' : 'failed',
       message: normalizedError.message,
       detail: options as Record<string, unknown>,
@@ -893,6 +1591,30 @@ export async function manageSchedule(options: {
 }) {
   try {
     assertCapabilityAllowed('scheduleManagement', `调度操作 ${options.action}`)
+    if (!USE_MOCK_DATA) {
+      switch (options.action) {
+        case 'list':
+          return await requestScheduleList()
+        case 'detail':
+          return await requestScheduleDetail(options.scheduleId ?? '', options.taskId ?? 0)
+        case 'create':
+          return await requestCreateSchedule(
+            options.input as ScheduleDraftInput,
+            options.task ?? null,
+          )
+        case 'update':
+          return await requestUpdateSchedule(
+            options.schedule as ScheduleEntity,
+            options.input as ScheduleDraftInput,
+            options.task ?? null,
+          )
+        case 'delete':
+          return await requestDeleteSchedule(options.scheduleId ?? '', options.taskId ?? 0)
+        default:
+          return null
+      }
+    }
+
     let result: unknown
 
     switch (options.action) {
@@ -922,7 +1644,7 @@ export async function manageSchedule(options: {
     recordAuditEvent({
       category: 'system',
       action: `schedule:${options.action}`,
-      target: '/database_server/clean_schedule_service',
+      target: SCHEDULE_SERVICE.canonicalName,
       status: 'success',
       message: '调度管理操作已完成。',
       detail: options as Record<string, unknown>,
@@ -934,7 +1656,7 @@ export async function manageSchedule(options: {
     recordAuditEvent({
       category: 'system',
       action: `schedule:${options.action}`,
-      target: '/database_server/clean_schedule_service',
+      target: SCHEDULE_SERVICE.canonicalName,
       status: normalizedError.requiresEngineer ? 'blocked' : 'failed',
       message: normalizedError.message,
       detail: options as Record<string, unknown>,
@@ -944,20 +1666,24 @@ export async function manageSchedule(options: {
 }
 
 export async function runSlamAction(
-  actionKind: SlamActionKind | 'cancel_job' | 'sync_runtime_state',
-  payload: SubmitSlamWorkflowRequest | { jobId: string } | undefined = undefined,
+  actionKind: SlamActionKind,
+  payload: SubmitSlamWorkflowRequest | undefined = undefined,
 ) {
+  const normalizedActionKind =
+    actionKind === 'restart_localization' ? 'relocalize' : actionKind
+
   try {
-    assertCapabilityAllowed('slamWorkbench', `SLAM 动作 ${actionKind}`)
+    assertCapabilityAllowed('slamWorkbench', `SLAM 动作 ${normalizedActionKind}`)
+    if (!USE_MOCK_DATA) {
+      return await requestSlamAction(normalizedActionKind, payload)
+    }
+
     let result: unknown
     const workflowPayload = (payload ?? {}) as SubmitSlamWorkflowRequest
 
-    switch (actionKind) {
-      case 'prepare_for_task':
-        result = await submitPrepareForTask(workflowPayload)
-        break
-      case 'switch_map_and_localize':
-        result = await submitSwitchMapAndLocalize(workflowPayload)
+    switch (normalizedActionKind) {
+      case 'switch_map':
+        result = await submitSwitchMap(workflowPayload)
         break
       case 'relocalize':
         result = await submitRelocalize(workflowPayload)
@@ -965,17 +1691,11 @@ export async function runSlamAction(
       case 'start_mapping':
         result = await submitStartMapping(workflowPayload)
         break
-      case 'save_map':
-        result = await submitSaveMap(workflowPayload)
+      case 'save_mapping':
+        result = await submitSaveMapping(workflowPayload)
         break
       case 'stop_mapping':
         result = await submitStopMapping(workflowPayload)
-        break
-      case 'cancel_job':
-        result = await cancelSlamWorkflowJob((payload as { jobId: string } | undefined)?.jobId ?? '')
-        break
-      case 'sync_runtime_state':
-        result = await syncSlamRuntimeState()
         break
       default:
         result = null
@@ -983,8 +1703,8 @@ export async function runSlamAction(
 
     recordAuditEvent({
       category: 'slam',
-      action: actionKind,
-      target: '/slam_workflow/*',
+      action: normalizedActionKind,
+      target: '/clean_robot_server/*',
       status: 'success',
       message: 'SLAM 动作已通过统一网关下发。',
       detail: (payload ?? {}) as Record<string, unknown>,
@@ -995,8 +1715,8 @@ export async function runSlamAction(
     const normalizedError = normalizeRobotGatewayError(error)
     recordAuditEvent({
       category: 'slam',
-      action: actionKind,
-      target: '/slam_workflow/*',
+      action: normalizedActionKind,
+      target: '/clean_robot_server/*',
       status: normalizedError.requiresEngineer ? 'blocked' : 'failed',
       message: normalizedError.message,
       detail: (payload ?? {}) as Record<string, unknown>,

@@ -1,20 +1,19 @@
 import { useEffect } from 'react'
 
-import { Button, Card, Form, Input, InputNumber, Space, Switch, Typography } from 'antd'
+import { Button, Card, Form, Input, Select, Space, Switch, Typography } from 'antd'
 
 type SwitchMapFormValues = {
   mapName: string
-  frameId: string
-  hasInitialPose: boolean
-  initialPoseX: number
-  initialPoseY: number
-  initialPoseYaw: number
+  restartLocalizationAfterSwitch: boolean
+  description: string
+  setActive: boolean
 }
 
 type SwitchMapFormProps = {
   disabled: boolean
   loading: boolean
   initialMapName?: string
+  mapOptions?: Array<{ label: string; value: string }>
   onSubmit: (values: SwitchMapFormValues) => void
 }
 
@@ -22,10 +21,10 @@ export function SwitchMapForm({
   disabled,
   loading,
   initialMapName,
+  mapOptions = [],
   onSubmit,
 }: SwitchMapFormProps) {
   const [form] = Form.useForm<SwitchMapFormValues>()
-  const hasInitialPose = Form.useWatch('hasInitialPose', form) ?? false
 
   useEffect(() => {
     const current = form.getFieldValue('mapName')
@@ -38,9 +37,10 @@ export function SwitchMapForm({
   }, [form, initialMapName])
 
   return (
-    <Card title="切图并定位" className="slam-card">
+    <Card title="切换地图" className="slam-card">
       <Typography.Paragraph className="slam-card-copy">
-        当目标地图已经明确时使用这里。如果自动定位不稳定，可以同时提交一个初始位姿。
+        通过 `/clean_robot_server/app/submit_slam_command(switch_map)` 提交切图请求，
+        只有在 `can_switch_map` 允许时才能执行。
       </Typography.Paragraph>
 
       <Form<SwitchMapFormValues>
@@ -48,51 +48,54 @@ export function SwitchMapForm({
         layout="vertical"
         initialValues={{
           mapName: initialMapName ?? '',
-          frameId: 'map',
-          hasInitialPose: false,
-          initialPoseX: 0,
-          initialPoseY: 0,
-          initialPoseYaw: 0,
+          restartLocalizationAfterSwitch: true,
+          description: '',
+          setActive: true,
         }}
         onFinish={onSubmit}
       >
         <Form.Item
           name="mapName"
-          label="目标地图名称"
-          rules={[{ required: true, message: '请输入目标 map_name。' }]}
+          label="目标地图"
+          rules={[{ required: true, message: '请选择要切换的地图' }]}
         >
-          <Input disabled={disabled} placeholder="0327-1" />
-        </Form.Item>
-
-        <Form.Item name="frameId" label="坐标系">
-          <Input disabled={disabled} placeholder="map" />
+          {mapOptions.length > 0 ? (
+            <Select
+              showSearch
+              allowClear
+              disabled={disabled}
+              placeholder="请选择目标地图"
+              optionFilterProp="label"
+              options={mapOptions}
+            />
+          ) : (
+            <Input disabled={disabled} placeholder="请输入 map_name" />
+          )}
         </Form.Item>
 
         <Form.Item
-          name="hasInitialPose"
-          label="附带初始位姿"
+          name="restartLocalizationAfterSwitch"
+          label="切换后自动重定位"
           valuePropName="checked"
         >
           <Switch disabled={disabled} />
         </Form.Item>
 
-        {hasInitialPose ? (
-          <div className="slam-inline-grid">
-            <Form.Item name="initialPoseX" label="x">
-              <InputNumber style={{ width: '100%' }} disabled={disabled} />
-            </Form.Item>
-            <Form.Item name="initialPoseY" label="y">
-              <InputNumber style={{ width: '100%' }} disabled={disabled} />
-            </Form.Item>
-            <Form.Item name="initialPoseYaw" label="yaw">
-              <InputNumber style={{ width: '100%' }} disabled={disabled} />
-            </Form.Item>
-          </div>
-        ) : null}
+        <Form.Item
+          name="setActive"
+          label="切换后设为当前活动地图"
+          valuePropName="checked"
+        >
+          <Switch disabled={disabled} />
+        </Form.Item>
+
+        <Form.Item name="description" label="说明">
+          <Input disabled={disabled} placeholder="可选，用于记录本次切图原因" />
+        </Form.Item>
 
         <Space wrap>
           <Button type="primary" htmlType="submit" loading={loading} disabled={disabled}>
-            切图并定位
+            切换地图
           </Button>
           <Button disabled={disabled || loading} onClick={() => form.resetFields()}>
             重置

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   Circle,
@@ -231,17 +231,42 @@ function useOccupancyCanvas(grid: OccupancyGrid | null) {
 
   useEffect(() => {
     let active = true
-
-    const timeoutHandle = globalThis.setTimeout(() => {
+    const renderCanvas = () => {
       const nextCanvas = grid ? createOccupancyGridCanvas(grid) : null
       if (active) {
         setCanvas(nextCanvas)
       }
-    }, 0)
+    }
+
+    const requestIdle =
+      'requestIdleCallback' in globalThis &&
+      typeof globalThis.requestIdleCallback === 'function'
+        ? globalThis.requestIdleCallback.bind(globalThis)
+        : null
+    const cancelIdle =
+      'cancelIdleCallback' in globalThis &&
+      typeof globalThis.cancelIdleCallback === 'function'
+        ? globalThis.cancelIdleCallback.bind(globalThis)
+        : null
+
+    let idleHandle: number | null = null
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+
+    if (requestIdle) {
+      idleHandle = requestIdle(renderCanvas, { timeout: 120 })
+    } else {
+      timeoutHandle = globalThis.setTimeout(renderCanvas, 0)
+    }
 
     return () => {
       active = false
-      globalThis.clearTimeout(timeoutHandle)
+      if (idleHandle !== null && cancelIdle) {
+        cancelIdle(idleHandle)
+      }
+
+      if (timeoutHandle !== null) {
+        globalThis.clearTimeout(timeoutHandle)
+      }
     }
   }, [grid])
 
@@ -319,7 +344,8 @@ export function MapCanvas({
   const isPickingMode = isAligning || isCreatingZone || isCreatingNoGo || isCreatingWall
   const isInteractiveSelection = mode === 'idle'
 
-  const occupancyImage = useOccupancyCanvas(map?.occupancyGrid ?? null)
+  const deferredOccupancyGrid = useDeferredValue(map?.occupancyGrid ?? null)
+  const occupancyImage = useOccupancyCanvas(deferredOccupancyGrid)
   const rasterImage = useImageSource(map?.rasterImageUrl ?? null)
 
   const mapGeometryBounds = map ? getEntityBounds(map) : null

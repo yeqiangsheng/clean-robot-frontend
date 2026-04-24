@@ -1,86 +1,45 @@
-import { useMemo, useState } from 'react'
-
-import { AutoComplete, Button, Space, Typography } from 'antd'
+import { Button, Space, Typography } from 'antd'
 
 import type { RosConnectionSnapshot } from '../../types/ros'
 
 interface RosbridgeEndpointControlProps {
   snapshot: RosConnectionSnapshot
   defaultUrl: string
-  quickUrls: string[]
   onConnect: (url: string) => Promise<void>
 }
 
-function normalizeUrl(value: string) {
-  return value.trim()
-}
+function getConnectionLabel(snapshot: RosConnectionSnapshot) {
+  if (snapshot.status === 'mock') {
+    return 'Mock 模式'
+  }
 
-function isValidRosbridgeUrl(value: string) {
-  const normalized = normalizeUrl(value).toLowerCase()
-  return normalized.startsWith('ws://') || normalized.startsWith('wss://')
+  if (snapshot.isConnected) {
+    return '站点网关 ROS 会话'
+  }
+
+  return '等待站点网关恢复 ROS 连接'
 }
 
 export function RosbridgeEndpointControl({
   snapshot,
   defaultUrl,
-  quickUrls,
   onConnect,
 }: RosbridgeEndpointControlProps) {
-  const [draftState, setDraftState] = useState({
-    sourceUrl: snapshot.url,
-    value: snapshot.url,
-  })
-
-  const normalizedCurrentUrl = normalizeUrl(snapshot.url)
-  const draftUrl =
-    draftState.sourceUrl === snapshot.url ? draftState.value : snapshot.url
-  const normalizedDraftUrl = normalizeUrl(draftUrl)
   const disabled = snapshot.status === 'mock'
-
-  const endpointOptions = useMemo(
-    () =>
-      quickUrls.map((url) => {
-        const tags = [
-          url === defaultUrl ? '默认' : '',
-          url === normalizedCurrentUrl ? '当前' : '',
-        ].filter((value) => value.length > 0)
-
-        return {
-          value: url,
-          label: tags.length > 0 ? `${url} (${tags.join(', ')})` : url,
-        }
-      }),
-    [defaultUrl, normalizedCurrentUrl, quickUrls],
-  )
+  const displayUrl = snapshot.url || defaultUrl || 'ws://<site-gateway-managed>'
 
   return (
     <Space size="small" wrap>
-      <Typography.Text code>{snapshot.url}</Typography.Text>
-      <AutoComplete
-        size="small"
-        value={draftUrl}
-        options={endpointOptions}
-        disabled={disabled}
-        style={{ width: 320 }}
-        placeholder="ws://10.0.0.157:9090"
-        onChange={(value) =>
-          setDraftState({
-            sourceUrl: snapshot.url,
-            value,
-          })
-        }
-        filterOption={(inputValue, option) =>
-          String(option?.value ?? '').toLowerCase().includes(inputValue.toLowerCase())
-        }
-      />
+      <Typography.Text code>{getConnectionLabel(snapshot)}</Typography.Text>
+      <Typography.Text type="secondary">{displayUrl}</Typography.Text>
       <Button
         size="small"
         type="primary"
-        disabled={disabled || !isValidRosbridgeUrl(normalizedDraftUrl)}
-        loading={snapshot.status === 'connecting' && normalizedDraftUrl === normalizedCurrentUrl}
-        onClick={() => void onConnect(normalizedDraftUrl)}
+        disabled={disabled}
+        loading={snapshot.status === 'connecting'}
+        onClick={() => void onConnect(defaultUrl)}
       >
-        {normalizedDraftUrl === normalizedCurrentUrl ? '重新连接' : '连接'}
+        重新连接
       </Button>
     </Space>
   )

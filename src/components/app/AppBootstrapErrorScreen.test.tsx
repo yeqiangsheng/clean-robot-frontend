@@ -10,16 +10,17 @@ describe('AppBootstrapErrorScreen', () => {
         title="Invalid config"
         description="The startup config failed validation."
         issues={[
-          { field: 'rosbridgeUrl', message: 'must use ws:// or wss://' },
-          { field: 'rolePolicy.engineer', message: 'must not be empty' },
+          { field: 'apiBaseUrl', message: 'must be a relative path or http(s) URL' },
+          { field: 'enabledModules.overview', message: 'must be a boolean when provided' },
         ]}
         onRetry={vi.fn()}
       />,
     )
 
     expect(screen.getByText('Invalid config')).toBeInTheDocument()
-    expect(screen.getByText('rosbridgeUrl')).toBeInTheDocument()
-    expect(screen.getByText('must use ws:// or wss://')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(screen.getByText('apiBaseUrl')).toBeInTheDocument()
+    expect(screen.getByText('must be a relative path or http(s) URL')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '刷新页面' })).toBeInTheDocument()
   })
 })

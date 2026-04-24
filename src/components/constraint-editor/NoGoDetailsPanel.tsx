@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 
-import { Card, Descriptions, Empty, Tag, Typography } from 'antd'
+import { Card, Descriptions, Tag, Typography } from 'antd'
 
+import { AppEmptyState } from '../feedback/AppEmptyState'
 import type { AreaEntity } from '../../types/map-editor'
 
 interface NoGoDetailsPanelProps {
@@ -98,10 +99,7 @@ export function NoGoDetailsPanel({ area, extra = null }: NoGoDetailsPanelProps) 
   if (!area) {
     return (
       <Card title="禁入区详情" className="workbench-card">
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="请选择一个禁入区查看只读详情。"
-        />
+        <AppEmptyState description="请选择一个禁入区查看只读详情。" />
       </Card>
     )
   }
@@ -128,9 +126,7 @@ export function NoGoDetailsPanel({ area, extra = null }: NoGoDetailsPanelProps) 
           {enabled === null ? '--' : enabled ? '是' : '否'}
         </Descriptions.Item>
         <Descriptions.Item label="显示坐标系">{getFrameId(area)}</Descriptions.Item>
-        <Descriptions.Item label="更新时间">
-          {formatTimestamp(area.raw.updated_ts)}
-        </Descriptions.Item>
+        <Descriptions.Item label="更新时间">{formatTimestamp(area.raw.updated_ts)}</Descriptions.Item>
       </Descriptions>
 
       {warnings.length > 0 ? (

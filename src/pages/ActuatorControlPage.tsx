@@ -2,17 +2,14 @@
 import { useMemo, useState } from 'react'
 
 import {
-  Alert,
   Button,
   Card,
   Descriptions,
-  Empty,
   Progress,
   Slider,
   Space,
   Tag,
   Typography,
-  message,
 } from 'antd'
 
 import {
@@ -29,10 +26,19 @@ import {
   type ActuatorPacketPreview,
   type PacketConfidence,
 } from '../api/ros/actuatorPacketFormatter'
+import { AppEmptyState } from '../components/feedback/AppEmptyState'
+import { AppFeedbackBanner } from '../components/feedback/AppFeedbackBanner'
 import { RosbridgeEndpointControl } from '../components/ros/RosbridgeEndpointControl'
+import { useAppFeedback } from '../hooks/useAppFeedback'
 import { useRosConnection } from '../hooks/useRosConnection'
 import { useRuntimeMonitorStore } from '../stores/runtimeMonitorStore'
 import type { RuntimeTopicHealth, RuntimeTopicSnapshot } from '../types/runtime'
+import {
+  STATION_STATUS_NON_BLOCKING_DESCRIPTION,
+  STATION_STATUS_NON_BLOCKING_TITLE,
+  getStationStatusTag,
+  isStationStatusNonBlocking,
+} from '../utils/stationStatus'
 import './ActuatorControlPage.css'
 
 const PRESET_LEVELS = [0, 16, 32, 48, 64]
@@ -477,7 +483,7 @@ function FeedbackProgressRow({
 }
 
 export function ActuatorControlPage() {
-  const { snapshot, defaultUrl, quickUrls, connect } = useRosConnection()
+  const { snapshot, defaultUrl, connect } = useRosConnection()
   const batteryStateTopic = useRuntimeMonitorStore((state) => state.topicMap.batteryState)
   const combinedStatusTopic = useRuntimeMonitorStore((state) => state.topicMap.combinedStatus)
   const stationStatusTopic = useRuntimeMonitorStore((state) => state.topicMap.stationStatus)
@@ -490,7 +496,7 @@ export function ActuatorControlPage() {
     () => getStationStatusValue(stationStatusTopic),
     [stationStatusTopic],
   )
-  const [messageApi, messageContextHolder] = message.useMessage()
+  const feedback = useAppFeedback()
   const [waterPumpLevel, setWaterPumpLevel] = useState(0)
   const [waterPumpSentLevel, setWaterPumpSentLevel] = useState<number | null>(null)
   const [vacuumMotorLevel, setVacuumMotorLevel] = useState(0)
@@ -507,7 +513,7 @@ export function ActuatorControlPage() {
   const connectionTag = getConnectionTag(snapshot.status)
   const batteryFeedbackTag = getTopicHealthTag(batteryStateTopic.health)
   const combinedFeedbackTag = getTopicHealthTag(combinedStatusTopic.health)
-  const stationFeedbackTag = getTopicHealthTag(stationStatusTopic.health)
+  const stationFeedbackTag = getStationStatusTag(stationStatusTopic)
   const rosConnected = snapshot.status === 'connected' && snapshot.isConnected
   const controlsDisabled = !rosConnected
   const controlsBusy = pendingCommand !== null
@@ -547,7 +553,7 @@ export function ActuatorControlPage() {
     onSuccess?: () => void
   }) => {
     if (controlsDisabled) {
-      messageApi.warning('ROS 未连接，无法发送执行机构命令。')
+      feedback.warning('ROS 未连接', '连接恢复前，无法发送执行机构命令。')
       return
     }
 
@@ -558,11 +564,11 @@ export function ActuatorControlPage() {
       await publish()
       onSuccess?.()
       appendCommandLog(label, steps)
-      messageApi.success(`${label} 已下发`)
+      feedback.success(`${label}已下发`, '命令已经通过站点网关发往现场控制链。')
     } catch (error) {
       const errorMessage = getErrorMessage(error)
       setPublishError(`${label}: ${errorMessage}`)
-      messageApi.error(`${label} 下发失败：${errorMessage}`)
+      feedback.error(`${label}下发失败`, errorMessage)
     } finally {
       setPendingCommand(null)
     }
@@ -819,9 +825,9 @@ export function ActuatorControlPage() {
   const handleCopyLog = async (log: CommandLogItem) => {
     try {
       await copyText(formatCommandLogText(log))
-      messageApi.success('日志已复制')
+      feedback.success('日志已复制', '命令日志已经复制到剪贴板。')
     } catch (error) {
-      messageApi.error(`复制失败：${getErrorMessage(error)}`)
+      feedback.error('复制失败', getErrorMessage(error))
     }
   }
 
@@ -829,11 +835,20 @@ export function ActuatorControlPage() {
     topic: RuntimeTopicSnapshot,
     waitingDescription: string,
   ) => {
+    if (topic.key === 'stationStatus' && isStationStatusNonBlocking(topic)) {
+      return (
+        <AppFeedbackBanner
+          tone="warning"
+          title={STATION_STATUS_NON_BLOCKING_TITLE}
+          description={STATION_STATUS_NON_BLOCKING_DESCRIPTION}
+        />
+      )
+    }
+
     if (topic.health === 'disconnected') {
       return (
-        <Alert
-          showIcon
-          type="error"
+        <AppFeedbackBanner
+          tone="error"
           title="ROS 未连接"
           description="连接恢复前，无法获取该 topic 的实时反馈。"
         />
@@ -842,9 +857,8 @@ export function ActuatorControlPage() {
 
     if (topic.health === 'unavailable') {
       return (
-        <Alert
-          showIcon
-          type="warning"
+        <AppFeedbackBanner
+          tone="warning"
           title={`${topic.topicName} 不可用`}
           description={
             topic.metaError || 'rosapi 没有返回 live topic type，或者当前没有发布者。'
@@ -855,9 +869,8 @@ export function ActuatorControlPage() {
 
     if (topic.health === 'waiting') {
       return (
-        <Alert
-          showIcon
-          type="info"
+        <AppFeedbackBanner
+          tone="info"
           title={`等待 ${topic.topicName} 首条消息`}
           description={waitingDescription}
         />
@@ -866,9 +879,8 @@ export function ActuatorControlPage() {
 
     if (topic.health === 'stale') {
       return (
-        <Alert
-          showIcon
-          type="warning"
+        <AppFeedbackBanner
+          tone="warning"
           title={`${topic.topicName} 反馈超时`}
           description="订阅仍然存在，但最近一条反馈已经超过预期刷新周期。"
         />
@@ -880,13 +892,12 @@ export function ActuatorControlPage() {
 
   return (
     <>
-      {messageContextHolder}
       <div className="actuator-page">
         <header className="actuator-page-header">
           <div>
             <Typography.Title level={2}>执行机构调试</Typography.Title>
             <Typography.Paragraph>
-              现场调试页，所有命令直接通过 rosbridge 下发 ROS topic，并同步展示 M 核协议说明与报文预览。
+              现场调试页，所有命令统一通过站点网关下发到 ROS topic，并同步展示 M 核协议说明与报文预览。
             </Typography.Paragraph>
           </div>
           <Space size="middle" wrap>
@@ -895,23 +906,20 @@ export function ActuatorControlPage() {
             <RosbridgeEndpointControl
               snapshot={snapshot}
               defaultUrl={defaultUrl}
-              quickUrls={quickUrls}
               onConnect={handleReconnect}
             />
           </Space>
         </header>
 
-        <Alert
-          showIcon
-          type="warning"
+        <AppFeedbackBanner
+          tone="warning"
           title="任务执行中，手动下发的执行机构命令可能会被执行器重新覆盖。"
           className="actuator-banner"
         />
 
         {!rosConnected ? (
-          <Alert
-            showIcon
-            type={snapshot.status === 'connecting' ? 'info' : 'error'}
+          <AppFeedbackBanner
+            tone={snapshot.status === 'connecting' ? 'info' : 'error'}
             title={snapshot.status === 'connecting' ? 'ROS 连接中' : 'ROS 未连接'}
             description={
               snapshot.lastError ||
@@ -922,19 +930,17 @@ export function ActuatorControlPage() {
         ) : null}
 
         {snapshot.status === 'mock' ? (
-          <Alert
-            showIcon
-            type="info"
+          <AppFeedbackBanner
+            tone="info"
             title="Mock 模式"
-            description="Mock 模式不会真正下发 ROS topic，现场调试请切回真实 rosbridge。"
+            description="Mock 模式不会真正下发 ROS topic，现场调试请切回真实站点网关。"
             className="actuator-banner"
           />
         ) : null}
 
         {publishError ? (
-          <Alert
-            showIcon
-            type="error"
+          <AppFeedbackBanner
+            tone="error"
             title="命令下发失败"
             description={publishError}
             className="actuator-banner"
@@ -955,14 +961,12 @@ export function ActuatorControlPage() {
                 }
               >
                 <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-                  <Alert
-                    showIcon
-                    type="warning"
+                  <AppFeedbackBanner
+                    tone="warning"
                     title="该功能为现场调试功能，仅在机器人已停稳且确认对接安全时使用。"
                   />
-                  <Alert
-                    showIcon
-                    type="info"
+                  <AppFeedbackBanner
+                    tone="info"
                     title="按钮下发的是实时 ROS 控制命令，不代表一定已经物理起充，请以充电机状态、电池电流和电池状态回报为准。"
                   />
 
@@ -1213,9 +1217,8 @@ export function ActuatorControlPage() {
                   </div>
 
                   {shouldWarnWaterValve ? (
-                    <Alert
-                      showIcon
-                      type="warning"
+                    <AppFeedbackBanner
+                      tone="warning"
                       title="当前泵速大于 0"
                       description="现场出水通常还需要打开清水阀。当前页不会静默替你联动开阀，请按现场情况手动确认。"
                     />
@@ -1332,9 +1335,8 @@ export function ActuatorControlPage() {
                     </Button>
                   </div>
 
-                  <Alert
-                    showIcon
-                    type="info"
+                  <AppFeedbackBanner
+                    tone="info"
                     title="快捷入口"
                     description="“开启吸水机”对应 tap_id=5、operation=1，也就是现场确认的 Tx: 50 43 00 0A 50 03 05 01 F6 DA。"
                   />
@@ -1426,7 +1428,7 @@ export function ActuatorControlPage() {
                   </div>
 
                   <Typography.Paragraph className="actuator-footnote">
-                    真空电机仍然直接下发到 <Typography.Text code>{ACTUATOR_CONTROL_TOPICS.motor.name}</Typography.Text>，
+                    站点网关会把真空电机命令下发到 <Typography.Text code>{ACTUATOR_CONTROL_TOPICS.motor.name}</Typography.Text>，
                     payload 为 <Typography.Text code>{'{ vel: 0..64 }'}</Typography.Text>。
                   </Typography.Paragraph>
                 </Space>
@@ -1672,10 +1674,7 @@ export function ActuatorControlPage() {
                   ))}
                 </div>
               ) : (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="任意按钮或滑条真正下发成功后，这里会按时间倒序保留最近的发送报文日志。"
-                />
+                <AppEmptyState description="任意按钮或滑条真正下发成功后，这里会按时间倒序保留最近的发送报文日志。" />
               )}
             </Card>
           </main>
@@ -1695,7 +1694,7 @@ export function ActuatorControlPage() {
               <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
                 {renderTopicStateAlert(
                   combinedStatusTopic,
-                  '页面已经挂上 /combined_status 订阅，正在等待机器人返回首条实时反馈。',
+                  '站点网关正在等待 /combined_status 的首条实时反馈。',
                 )}
 
                 <Descriptions column={1} size="small" colon={false}>
@@ -1748,10 +1747,7 @@ export function ActuatorControlPage() {
                   ))}
                 </Space>
               ) : (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="第一条命令发出后，这里会显示最新的发送摘要。"
-                />
+                <AppEmptyState description="第一条命令发出后，这里会显示最新的发送摘要。" />
               )}
             </Card>
           </aside>

@@ -1,17 +1,9 @@
-import {
-  Alert,
-  Button,
-  Card,
-  Descriptions,
-  Empty,
-  Popconfirm,
-  Space,
-  Spin,
-  Tag,
-  Typography,
-} from 'antd'
+import { Button, Card, Descriptions, Popconfirm, Space, Tag, Typography } from 'antd'
 import { DatabaseOutlined, EditOutlined } from '@ant-design/icons'
 
+import { AppEmptyState } from '../../components/feedback/AppEmptyState'
+import { AppFeedbackBanner } from '../../components/feedback/AppFeedbackBanner'
+import { AppLoadingState } from '../../components/feedback/AppLoadingState'
 import type { ScheduleEntity } from '../../types/schedule'
 import {
   formatDow,
@@ -26,6 +18,7 @@ interface ScheduleManagementDetailProps {
   isLoading: boolean
   isRefreshing: boolean
   error: string | null
+  notFound: boolean
   isSubmitting: boolean
   metadataEntries: Array<[string, unknown]>
   planProfileLabel: string
@@ -39,6 +32,7 @@ export function ScheduleManagementDetail({
   isLoading,
   isRefreshing,
   error,
+  notFound,
   isSubmitting,
   metadataEntries,
   planProfileLabel,
@@ -57,7 +51,7 @@ export function ScheduleManagementDetail({
           </Button>
           <Popconfirm
             title="删除调度"
-            description="确认从后端删除当前调度吗？"
+            description="确认从后端永久删除当前调度吗？"
             okText="删除"
             cancelText="取消"
             onConfirm={() => void onDelete()}
@@ -72,19 +66,18 @@ export function ScheduleManagementDetail({
       }
     >
       {isRefreshing && detail ? (
-        <div className="schedule-loading schedule-loading-compact">
-          <Spin />
-          <Typography.Text>正在刷新调度详情...</Typography.Text>
-        </div>
+        <AppLoadingState message="正在刷新调度详情…" compact className="schedule-loading" />
       ) : null}
 
       {isLoading ? (
-        <div className="schedule-loading">
-          <Spin />
-          <Typography.Text>正在加载调度详情...</Typography.Text>
-        </div>
+        <AppLoadingState message="正在加载调度详情…" className="schedule-loading" />
       ) : error ? (
-        <Alert showIcon type="error" title="调度详情加载失败" description={error} />
+        <AppFeedbackBanner tone="error" title="调度详情加载失败" description={error} />
+      ) : notFound ? (
+        <AppEmptyState
+          title="这条调度已不存在"
+          description="它可能已经被删除。请选择列表中的其他调度，或直接新建一条调度。"
+        />
       ) : detail ? (
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <Descriptions column={2} size="small" colon={false}>
@@ -161,12 +154,15 @@ export function ScheduleManagementDetail({
                 ))}
               </Descriptions>
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未返回调度元数据。" />
+              <AppEmptyState title="暂无调度元数据" description="后端这次没有返回额外元数据。" />
             )}
           </Card>
         </Space>
       ) : (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请选择一个调度查看详情。" />
+        <AppEmptyState
+          title="请选择一个调度"
+          description="从左侧调度列表选择一条记录后，这里会显示详情。"
+        />
       )}
     </Card>
   )

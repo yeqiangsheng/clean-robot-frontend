@@ -1,5 +1,7 @@
 /// <reference lib="webworker" />
 
+import { MAP_CATALOG_SERVICE } from '../api/ros/serviceNames'
+
 import type {
   DisplayFrame,
   MapEntity,
@@ -13,6 +15,7 @@ interface WorkerFetchRequest {
   id: number
   type: 'fetch-current-map'
   url: string
+  transport: 'rosbridge' | 'http'
 }
 
 interface WorkerFetchSuccessResponse {
@@ -33,7 +36,9 @@ interface WorkerFetchProgressResponse {
   event: string
 }
 
-const MAP_SERVICE_NAME = '/clean_robot_server/map_server'
+const MAP_SERVICE_NAME = MAP_CATALOG_SERVICE.canonicalName
+const MAP_DEPRECATED_FALLBACK_SERVICE_NAME =
+  MAP_CATALOG_SERVICE.deprecatedFallbackName
 const MAP_OPERATIONS = {
   get: 0,
   getAll: 4,
@@ -354,6 +359,43 @@ function summarizeMetadata(record: JsonRecord, hiddenKeys: string[]) {
   return metadata
 }
 
+const HEAVY_MAP_PAYLOAD_KEYS = [
+  'display_region',
+  'displayRegion',
+  'map_region',
+  'display_path',
+  'displayPath',
+  'map_path',
+  'occupancy_grid',
+  'occupancyGrid',
+  'map_data',
+  'grid',
+]
+
+function buildMapRawSnapshot(record: JsonRecord) {
+  const raw = summarizeMetadata(record, HEAVY_MAP_PAYLOAD_KEYS)
+
+  return {
+    ...raw,
+    map_name:
+      pickString(record, ['map_name', 'mapName', 'name', 'display_name']) ??
+      'Current Map',
+    map_id:
+      pickString(record, ['map_id', 'mapId', 'map_uuid', 'uuid', 'id']) ??
+      'current-map',
+    is_active: pickValue(record, ['is_active', 'active', 'is_current', 'current']),
+    frame_id:
+      pickString(record, ['frame_id']) ??
+      pickString(
+        isRecord(pickValue(record, ['display_frame']))
+          ? (pickValue(record, ['display_frame']) as JsonRecord)
+          : {},
+        ['frame_id'],
+      ) ??
+      null,
+  }
+}
+
 function getResponseSuccess(payload: unknown) {
   if (!isRecord(payload)) {
     return null
@@ -484,36 +526,8 @@ function normalizeMap(record: JsonRecord): MapEntity | null {
         occupancyGrid?.height ??
         null,
     },
-    metadata: summarizeMetadata(record, [
-      'display_region',
-      'displayRegion',
-      'map_region',
-      'display_path',
-      'displayPath',
-      'map_path',
-      'occupancy_grid',
-      'occupancyGrid',
-      'map_data',
-      'grid',
-    ]),
-    raw: {
-      map_name:
-        pickString(record, ['map_name', 'mapName', 'name', 'display_name']) ??
-        'Current Map',
-      map_id:
-        pickString(record, ['map_id', 'mapId', 'map_uuid', 'uuid', 'id']) ??
-        'current-map',
-      is_active: pickValue(record, ['is_active', 'active', 'is_current', 'current']),
-      frame_id:
-        pickString(record, ['frame_id']) ??
-        pickString(
-          isRecord(pickValue(record, ['display_frame']))
-            ? (pickValue(record, ['display_frame']) as JsonRecord)
-            : {},
-          ['frame_id'],
-        ) ??
-        null,
-    },
+    metadata: summarizeMetadata(record, HEAVY_MAP_PAYLOAD_KEYS),
+    raw: buildMapRawSnapshot(record),
   }
 }
 
@@ -657,12 +671,43 @@ class WorkerRosClient {
 async function fetchCurrentMapInWorker(id: number, url: string) {
   const client = new WorkerRosClient()
 
+  const callMapServiceWithFallback = async (
+    args: Record<string, unknown>,
+    timeoutSeconds = 8,
+  ) => {
+    try {
+      return await client.callService(MAP_SERVICE_NAME, args, timeoutSeconds)
+    } catch (canonicalError) {
+      postProgress(id, `worker:map:deprecated-fallback:${MAP_DEPRECATED_FALLBACK_SERVICE_NAME}`)
+
+      try {
+        return await client.callService(
+          MAP_DEPRECATED_FALLBACK_SERVICE_NAME,
+          args,
+          timeoutSeconds,
+        )
+      } catch (fallbackError) {
+        const fallbackMessage =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : `Deprecated fallback map service ${MAP_DEPRECATED_FALLBACK_SERVICE_NAME} failed.`
+        const normalizedFallbackError = new Error(fallbackMessage)
+
+        if (canonicalError instanceof Error && canonicalError.message.trim().length > 0) {
+          normalizedFallbackError.message = `${normalizedFallbackError.message} (canonical failure: ${canonicalError.message})`
+        }
+
+        throw normalizedFallbackError
+      }
+    }
+  }
+
   try {
     postProgress(id, `worker:connecting:${url}`)
     await client.connect(url)
 
     postProgress(id, 'worker:map:getAll:request')
-    const getAllPayload = await client.callService(MAP_SERVICE_NAME, {
+    const getAllPayload = await callMapServiceWithFallback({
       operation: MAP_OPERATIONS.getAll,
       map_name: '',
       map: {},
@@ -692,7 +737,7 @@ async function fetchCurrentMapInWorker(id: number, url: string) {
       pickString(activeMap, ['map_name', 'name', 'display_name']) ?? 'yeyeyeye'
 
     postProgress(id, `worker:map:get:request:${mapName}`)
-    const getPayload = await client.callService(MAP_SERVICE_NAME, {
+    const getPayload = await callMapServiceWithFallback({
       operation: MAP_OPERATIONS.get,
       map_name: mapName,
       map: {},
@@ -729,10 +774,59 @@ async function fetchCurrentMapInWorker(id: number, url: string) {
   }
 }
 
+async function fetchCurrentMapOverHttp(id: number, url: string) {
+  try {
+    postProgress(id, `worker:http:request:${url}`)
+
+    const response = await fetch(url, {
+      cache: 'no-store',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      let errorMessage = `Current map request failed with HTTP ${response.status}.`
+
+      try {
+        const payload = (await response.json()) as unknown
+        if (isRecord(payload) && typeof payload.message === 'string' && payload.message.trim()) {
+          errorMessage = payload.message.trim()
+        }
+      } catch {
+        // Keep the HTTP status fallback above.
+      }
+
+      throw new Error(errorMessage)
+    }
+
+    const payload = (await response.json()) as unknown
+    const normalized = isRecord(payload) ? normalizeMap(payload) : null
+
+    if (!normalized) {
+      throw new Error('Current map gateway returned no usable map payload.')
+    }
+
+    postProgress(id, `worker:http:ready:${normalized.name}`)
+    postSuccess(id, normalized)
+  } catch (error) {
+    postError(
+      id,
+      error instanceof Error ? error.message : 'Worker failed to fetch the current map snapshot.',
+    )
+  }
+}
+
 self.onmessage = (event: MessageEvent<WorkerFetchRequest>) => {
   const message = event.data
 
   if (message.type !== 'fetch-current-map') {
+    return
+  }
+
+  if (message.transport === 'http') {
+    void fetchCurrentMapOverHttp(message.id, message.url)
     return
   }
 

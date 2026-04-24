@@ -1,8 +1,23 @@
-import { getRosConnectionManager } from '../ros/client'
-import { fetchRuntimeTopicMeta } from '../ros/runtimeServices'
-
 import type { CapabilityFlag, CapabilityStatusItem } from '../../types/appShell'
 import type { RosConnectionSnapshot, RosServiceRequest } from '../../types/ros'
+import {
+  ODOMETRY_STATUS_SERVICE_DEPENDENCY,
+  PROFILE_CATALOG_SERVICE_DEPENDENCY,
+  SLAM_JOB_SERVICE_DEPENDENCY,
+  SLAM_STATUS_SERVICE_DEPENDENCY,
+  SYSTEM_READINESS_SERVICE_DEPENDENCY,
+  type ServiceDependencyAlternativeGroup,
+} from '../ros/queryContracts'
+import {
+  EXECUTION_SERVICE,
+  MAP_CATALOG_SERVICE,
+  SCHEDULE_SERVICE,
+  SITE_SERVICE_DEPRECATED_FALLBACKS,
+  SITE_SERVICE_NAMES,
+  SLAM_SUBMIT_SERVICE,
+  SLAM_SWITCH_MAP_FALLBACK_SERVICE,
+  TASK_SERVICE,
+} from '../ros/serviceNames'
 
 type JsonRecord = Record<string, unknown>
 
@@ -15,7 +30,7 @@ const CAPABILITY_TITLES: Record<CapabilityFlag, string> = {
   taskManagement: '任务管理',
   scheduleManagement: '调度管理',
   executionControl: '任务执行控制',
-  slamWorkbench: 'SLAM 工程台',
+  slamWorkbench: 'SLAM 工作台',
   runtimeMonitoring: '运行监控',
   actuatorControl: '执行机构调试',
   chargingControl: '充电控制',
@@ -23,23 +38,61 @@ const CAPABILITY_TITLES: Record<CapabilityFlag, string> = {
   systemReadiness: '系统就绪检查',
 }
 
-const SERVICE_DEPENDENCIES: Partial<Record<CapabilityFlag, string[]>> = {
+function createServiceDependencyGroup(
+  canonicalServiceName: string,
+  deprecatedFallbackProbeNames: string[] = [],
+): ServiceDependencyAlternativeGroup {
+  return {
+    label: canonicalServiceName,
+    probeNames: [canonicalServiceName, ...deprecatedFallbackProbeNames],
+    preferredServiceName: canonicalServiceName,
+  }
+}
+
+function flattenServiceDependencyLabels(
+  groups: ServiceDependencyAlternativeGroup[],
+) {
+  return groups.map((group) => group.label)
+}
+
+const SERVICE_DEPENDENCIES: Partial<
+  Record<CapabilityFlag, ServiceDependencyAlternativeGroup[]>
+> = {
   mapWorkbench: [
-    '/clean_robot_server/map_server',
-    '/database_server/coverage_zone_service',
+    createServiceDependencyGroup(MAP_CATALOG_SERVICE.canonicalName, [
+      MAP_CATALOG_SERVICE.deprecatedFallbackName,
+    ]),
+    createServiceDependencyGroup(SITE_SERVICE_NAMES.zone, [
+      SITE_SERVICE_DEPRECATED_FALLBACKS[SITE_SERVICE_NAMES.zone],
+    ]),
   ],
-  taskManagement: ['/database_server/clean_task_service'],
-  scheduleManagement: ['/database_server/clean_schedule_service'],
+  taskManagement: [
+    createServiceDependencyGroup(TASK_SERVICE.canonicalName, [
+      TASK_SERVICE.deprecatedFallbackName,
+    ]),
+  ],
+  scheduleManagement: [
+    createServiceDependencyGroup(SCHEDULE_SERVICE.canonicalName, [
+      SCHEDULE_SERVICE.deprecatedFallbackName,
+    ]),
+  ],
   executionControl: [
-    '/exe_task_server',
-    '/coverage_task_manager/get_system_readiness',
+    createServiceDependencyGroup(EXECUTION_SERVICE.canonicalName, [
+      EXECUTION_SERVICE.deprecatedFallbackName,
+    ]),
+    SYSTEM_READINESS_SERVICE_DEPENDENCY,
   ],
   slamWorkbench: [
-    '/slam_workflow/get_state',
-    '/slam_workflow/submit_start_mapping',
+    SLAM_STATUS_SERVICE_DEPENDENCY,
+    createServiceDependencyGroup(SLAM_SUBMIT_SERVICE.canonicalName, [
+      SLAM_SUBMIT_SERVICE.deprecatedFallbackName,
+      SLAM_SWITCH_MAP_FALLBACK_SERVICE.serviceName,
+    ]),
+    SLAM_JOB_SERVICE_DEPENDENCY,
+    ODOMETRY_STATUS_SERVICE_DEPENDENCY,
   ],
-  profileCatalog: ['/database_server/profile_catalog_service'],
-  systemReadiness: ['/coverage_task_manager/get_system_readiness'],
+  profileCatalog: [PROFILE_CATALOG_SERVICE_DEPENDENCY],
+  systemReadiness: [SYSTEM_READINESS_SERVICE_DEPENDENCY],
 }
 
 const TOPIC_DEPENDENCIES: Partial<Record<CapabilityFlag, string[]>> = {
@@ -72,6 +125,7 @@ function normalizeString(value: unknown) {
 }
 
 async function getServiceType(serviceName: string) {
+  const { getRosConnectionManager } = await import('../ros/client')
   const manager = getRosConnectionManager()
   const payload = await manager.callService<RosServiceRequest, JsonRecord>({
     serviceName: ROSAPI_SERVICE_TYPE_NAME,
@@ -84,32 +138,47 @@ async function getServiceType(serviceName: string) {
   return normalizeString(payload.type)
 }
 
-async function probeServiceDependencies(serviceNames: string[]) {
-  const results = await Promise.all(
-    serviceNames.map(async (serviceName) => {
-      try {
-        const serviceType = await getServiceType(serviceName)
+async function probeServiceDependencies(
+  dependencyGroups: ServiceDependencyAlternativeGroup[],
+) {
+  return Promise.all(
+    dependencyGroups.map(async (dependency) => {
+      const probeResults = await Promise.all(
+        dependency.probeNames.map(async (serviceName) => {
+          try {
+            const serviceType = await getServiceType(serviceName)
 
-        return {
-          serviceName,
-          exists: serviceType.length > 0,
-          detail: serviceType || 'service not found',
-        }
-      } catch (error) {
-        return {
-          serviceName,
-          exists: false,
-          detail: error instanceof Error ? error.message : 'service probe failed',
-        }
+            return {
+              serviceName,
+              exists: serviceType.length > 0,
+              detail: serviceType || 'service not found',
+            }
+          } catch (error) {
+            return {
+              serviceName,
+              exists: false,
+              detail: error instanceof Error ? error.message : 'service probe failed',
+            }
+          }
+        }),
+      )
+
+      const matched = probeResults.find((result) => result.exists)
+
+      return {
+        serviceName: dependency.label,
+        exists: Boolean(matched),
+        detail: matched?.detail ?? probeResults[0]?.detail ?? 'service probe failed',
+        preferredServiceName: dependency.preferredServiceName,
       }
     }),
   )
-
-  return results
 }
 
 async function probeTopicDependencies(topicNames: string[]) {
-  const results = await Promise.all(
+  const { fetchRuntimeTopicMeta } = await import('../ros/runtimeServices')
+
+  return Promise.all(
     topicNames.map(async (topicName) => {
       try {
         const meta = await fetchRuntimeTopicMeta(topicName)
@@ -128,20 +197,27 @@ async function probeTopicDependencies(topicNames: string[]) {
       }
     }),
   )
+}
 
-  return results
+function collectDependencyLabels(key: CapabilityFlag) {
+  return [
+    ...flattenServiceDependencyLabels(SERVICE_DEPENDENCIES[key] ?? []),
+    ...(TOPIC_DEPENDENCIES[key] ?? []),
+  ]
 }
 
 function createDisconnectedStatuses() {
-  return (
-    Object.keys(CAPABILITY_TITLES) as CapabilityFlag[]
-  ).reduce<Record<CapabilityFlag, CapabilityStatusItem>>((result, key) => {
+  return (Object.keys(CAPABILITY_TITLES) as CapabilityFlag[]).reduce<
+    Record<CapabilityFlag, CapabilityStatusItem>
+  >((result, key) => {
     result[key] = createStatusItem(
       key,
       key === 'overview' ? 'available' : 'checking',
-      key === 'overview' ? '页面壳层已就绪。' : '等待 rosbridge 连接后探测依赖。',
+      key === 'overview'
+        ? '页面壳层已就绪。'
+        : '等待站点网关恢复 ROS 会话后继续探测依赖。',
       'gateway',
-      [...(SERVICE_DEPENDENCIES[key] ?? []), ...(TOPIC_DEPENDENCIES[key] ?? [])],
+      collectDependencyLabels(key),
     )
     return result
   }, {} as Record<CapabilityFlag, CapabilityStatusItem>)
@@ -160,15 +236,18 @@ export function createCapabilitySnapshot(
         'disabled',
         '该能力已在本地配置中关闭。',
         'config',
-        [...(SERVICE_DEPENDENCIES[key] ?? []), ...(TOPIC_DEPENDENCIES[key] ?? [])],
+        collectDependencyLabels(key),
       )
-    } else if (snapshot.status === 'mock' && key !== 'overview') {
+      continue
+    }
+
+    if (snapshot.status === 'mock' && key !== 'overview') {
       baseStatus[key] = createStatusItem(
         key,
         'degraded',
         '当前使用 mock 数据，无法确认真实 ROS 依赖是否齐全。',
         'gateway',
-        [...(SERVICE_DEPENDENCIES[key] ?? []), ...(TOPIC_DEPENDENCIES[key] ?? [])],
+        collectDependencyLabels(key),
       )
     }
   }
@@ -206,15 +285,19 @@ export async function fetchCapabilityStatuses(
 
       const missingService = serviceResults.find((item) => !item.exists)
       const missingTopic = topicResults.find((item) => !item.exists)
+      const dependencies = [
+        ...flattenServiceDependencyLabels(serviceDependencies),
+        ...topicDependencies,
+      ]
 
       if (missingService && key === 'executionControl') {
         capabilityMap[key] = createStatusItem(
           key,
           'degraded',
           `核心执行服务可用性异常：${missingService.serviceName} - ${missingService.detail}`,
-          'rosapi',
-          [...serviceDependencies, ...topicDependencies],
-          missingService.serviceName,
+          'gateway',
+          dependencies,
+          missingService.preferredServiceName,
         )
         return
       }
@@ -224,9 +307,9 @@ export async function fetchCapabilityStatuses(
           key,
           'missing',
           `缺少服务：${missingService.serviceName}`,
-          'rosapi',
-          [...serviceDependencies, ...topicDependencies],
-          missingService.serviceName,
+          'gateway',
+          dependencies,
+          missingService.preferredServiceName,
         )
         return
       }
@@ -236,8 +319,8 @@ export async function fetchCapabilityStatuses(
           key,
           'degraded',
           `实时反馈缺失：${missingTopic.topicName}`,
-          'rosapi',
-          [...serviceDependencies, ...topicDependencies],
+          'gateway',
+          dependencies,
           missingTopic.topicName,
         )
         return
@@ -247,8 +330,8 @@ export async function fetchCapabilityStatuses(
         key,
         'available',
         '依赖已通过 rosapi 探测。',
-        'rosapi',
-        [...serviceDependencies, ...topicDependencies],
+        'gateway',
+        dependencies,
       )
     }),
   )

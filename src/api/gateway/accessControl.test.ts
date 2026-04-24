@@ -4,11 +4,12 @@ import { isCapabilityAllowedForRole, normalizeGatewayError } from './accessContr
 import type { GatewayErrorShape } from '../../types/appShell'
 
 describe('accessControl gateway helpers', () => {
-  it('applies the trial role policy', () => {
+  it('exposes the default site-gateway role policy used by the shell', () => {
     expect(isCapabilityAllowedForRole('overview', 'operator')).toBe(true)
     expect(isCapabilityAllowedForRole('runtimeMonitoring', 'service')).toBe(true)
     expect(isCapabilityAllowedForRole('slamWorkbench', 'service')).toBe(false)
     expect(isCapabilityAllowedForRole('actuatorControl', 'engineer')).toBe(true)
+    expect(isCapabilityAllowedForRole('chargingControl', 'admin')).toBe(true)
   })
 
   it('wraps unexpected errors with gateway metadata', () => {
@@ -31,7 +32,7 @@ describe('accessControl gateway helpers', () => {
 
   it('preserves an existing gateway-shaped error', () => {
     const existing = Object.assign(new Error('blocked'), {
-      code: 'ENGINEER_CAPABILITY_REQUIRED',
+      code: 'CAPABILITY_DENIED',
       source: 'access-control',
       recoverable: true,
       requiresEngineer: true,

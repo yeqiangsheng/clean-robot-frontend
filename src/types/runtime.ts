@@ -29,6 +29,11 @@ export interface RuntimeTopicMeta {
   metaError: string | null
 }
 
+export interface RuntimeMonitorOptions {
+  topicKeys?: RuntimeTopicKey[]
+  includeEndpointInfo?: boolean
+}
+
 export interface RuntimeTopicEntry extends RuntimeTopicConfig, RuntimeTopicMeta {
   rawMessage: Record<string, unknown> | null
   messageCount: number

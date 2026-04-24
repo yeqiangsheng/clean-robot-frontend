@@ -1,6 +1,7 @@
 import { getRosConnectionManager } from './client'
 
 import type {
+  RuntimeMonitorOptions,
   RuntimeTopicConfig,
   RuntimeTopicKey,
   RuntimeTopicMeta,
@@ -67,6 +68,10 @@ export const RUNTIME_TOPIC_CONFIGS: RuntimeTopicConfig[] = [
   },
 ]
 
+const RUNTIME_TOPIC_CONFIG_MAP = Object.fromEntries(
+  RUNTIME_TOPIC_CONFIGS.map((config) => [config.key, config]),
+) as Record<RuntimeTopicKey, RuntimeTopicConfig>
+
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -129,13 +134,35 @@ async function fetchTopicSubscribers(topicName: string) {
   return isRecord(payload) ? normalizeStringArray(payload.subscribers) : []
 }
 
-export async function fetchRuntimeTopicMeta(topicName: string): Promise<RuntimeTopicMeta> {
+export function getRuntimeTopicConfigs(topicKeys?: RuntimeTopicKey[]) {
+  if (!topicKeys || topicKeys.length === 0) {
+    return RUNTIME_TOPIC_CONFIGS
+  }
+
+  return topicKeys
+    .map((key) => RUNTIME_TOPIC_CONFIG_MAP[key])
+    .filter((config): config is RuntimeTopicConfig => Boolean(config))
+}
+
+export async function fetchRuntimeTopicMeta(
+  topicName: string,
+  options: Pick<RuntimeMonitorOptions, 'includeEndpointInfo'> = {},
+): Promise<RuntimeTopicMeta> {
   try {
-    const [messageType, publishers, subscribers] = await Promise.all([
-      fetchTopicType(topicName),
-      fetchTopicPublishers(topicName),
-      fetchTopicSubscribers(topicName),
-    ])
+    const includeEndpointInfo = options.includeEndpointInfo !== false
+    const messageType = await fetchTopicType(topicName)
+
+    let publishers: string[] = []
+    let subscribers: string[] = []
+
+    if (includeEndpointInfo) {
+      ;[publishers, subscribers] = await Promise.all([
+        fetchTopicPublishers(topicName),
+        fetchTopicSubscribers(topicName),
+      ])
+    } else if (messageType) {
+      publishers = ['type-only']
+    }
 
     return {
       messageType,
@@ -154,11 +181,14 @@ export async function fetchRuntimeTopicMeta(topicName: string): Promise<RuntimeT
   }
 }
 
-export async function fetchRuntimeTopicMetas() {
+export async function fetchRuntimeTopicMetas(
+  options: RuntimeMonitorOptions = {},
+) {
+  const configs = getRuntimeTopicConfigs(options.topicKeys)
   const entries = await Promise.all(
-    RUNTIME_TOPIC_CONFIGS.map(async (config) => [
+    configs.map(async (config) => [
       config.key,
-      await fetchRuntimeTopicMeta(config.topicName),
+      await fetchRuntimeTopicMeta(config.topicName, options),
     ]),
   )
 

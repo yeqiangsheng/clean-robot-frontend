@@ -1,10 +1,7 @@
 import { Ros, Service } from 'roslib'
 
-import {
-  getConfiguredQuickRosbridgeUrls,
-  getConfiguredRosbridgeUrl,
-} from '../../config/appConfig'
 import { setRosDebugEvent } from './debug'
+import { getDefaultRosbridgeUrl } from './connectionUrl'
 import type {
   RosClientLike,
   RosConnectionSnapshot,
@@ -13,74 +10,10 @@ import type {
   RosServiceResponse,
 } from '../../types/ros'
 
-const ENV_DEFAULT_URL = import.meta.env.VITE_ROSBRIDGE_URL ?? 'ws://127.0.0.1:9090'
-const ROSBRIDGE_URL_STORAGE_KEY = 'clean-robot-frontend:rosbridge-url'
 const DEFAULT_SERVICE_TYPE = 'std_srvs/Trigger'
 const DEFAULT_TIMEOUT_SECONDS = 8
 
 type SnapshotListener = (snapshot: RosConnectionSnapshot) => void
-
-function normalizeUrl(value: string | null | undefined) {
-  return value?.trim() ?? ''
-}
-
-function canUseStorage() {
-  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
-}
-
-function getStoredRosbridgeUrl() {
-  if (!canUseStorage()) {
-    return ''
-  }
-
-  try {
-    return normalizeUrl(window.localStorage.getItem(ROSBRIDGE_URL_STORAGE_KEY))
-  } catch {
-    return ''
-  }
-}
-
-export function getDefaultRosbridgeUrl() {
-  return getConfiguredRosbridgeUrl() || ENV_DEFAULT_URL
-}
-
-export function getInitialRosbridgeUrl() {
-  return getStoredRosbridgeUrl() || getDefaultRosbridgeUrl()
-}
-
-export function getRosbridgeQuickUrls() {
-  return Array.from(
-    new Set(
-      [
-        getDefaultRosbridgeUrl(),
-        ...getConfiguredQuickRosbridgeUrls(),
-        'ws://10.0.0.174:9090',
-        'ws://10.0.0.157:9090',
-      ]
-        .map((value) => normalizeUrl(value))
-        .filter(Boolean),
-    ),
-  )
-}
-
-function persistRosbridgeUrl(url: string) {
-  if (!canUseStorage()) {
-    return
-  }
-
-  try {
-    const normalizedUrl = normalizeUrl(url)
-
-    if (normalizedUrl.length > 0) {
-      window.localStorage.setItem(ROSBRIDGE_URL_STORAGE_KEY, normalizedUrl)
-      return
-    }
-
-    window.localStorage.removeItem(ROSBRIDGE_URL_STORAGE_KEY)
-  } catch {
-    // Best effort only: connection switching still works without storage.
-  }
-}
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -92,6 +25,14 @@ function getErrorMessage(error: unknown) {
   }
 
   return 'Unknown rosbridge error'
+}
+
+export function getInitialRosbridgeUrl() {
+  return getDefaultRosbridgeUrl()
+}
+
+export function getRosbridgeQuickUrls() {
+  return [getDefaultRosbridgeUrl()]
 }
 
 class RosConnectionManager implements RosClientLike {
@@ -106,6 +47,8 @@ class RosConnectionManager implements RosClientLike {
     lastError: null,
     connectedAt: null,
     sessionId: 0,
+    gatewayStatus: 'online',
+    gatewayLastError: null,
   }
 
   private emit() {
@@ -160,9 +103,8 @@ class RosConnectionManager implements RosClientLike {
     return this.ros
   }
 
-  async connect(url: string) {
-    const nextUrl = normalizeUrl(url) || getDefaultRosbridgeUrl()
-    persistRosbridgeUrl(nextUrl)
+  async connect(url?: string) {
+    const nextUrl = url?.trim() || getDefaultRosbridgeUrl()
 
     if (
       this.snapshot.status === 'connected' &&
@@ -172,7 +114,7 @@ class RosConnectionManager implements RosClientLike {
       return
     }
 
-    if (this.connectPromise && this.snapshot.url === nextUrl) {
+    if (this.connectPromise) {
       return this.connectPromise
     }
 
@@ -189,7 +131,7 @@ class RosConnectionManager implements RosClientLike {
       lastError: null,
     })
 
-    this.connectPromise = ros.connect(nextUrl).finally(() => {
+    this.connectPromise = Promise.resolve(ros.connect(nextUrl)).finally(() => {
       this.connectPromise = null
     })
 
@@ -232,7 +174,7 @@ class RosConnectionManager implements RosClientLike {
     const ros = this.ros
 
     if (!ros?.isConnected) {
-      throw new Error('rosbridge is not connected.')
+      throw new Error('rosbridge proxy is not connected.')
     }
 
     return new Promise<TResponse>((resolve, reject) => {

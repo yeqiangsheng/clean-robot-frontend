@@ -1,5 +1,7 @@
-import { Alert, Button, Card, Descriptions, Empty, Input, Space, Typography } from 'antd'
+import { Button, Card, Descriptions, Input, Space, Typography } from 'antd'
 
+import { AppEmptyState } from '../feedback/AppEmptyState'
+import { AppFeedbackBanner } from '../feedback/AppFeedbackBanner'
 import type { ConstraintEditorMode, ZoneRectDraft } from '../../types/map-editor'
 import { formatNumber } from '../../utils/geometry'
 
@@ -41,9 +43,8 @@ export function NoGoEditorPanel({
       extra={<Typography.Text type="secondary">{isEditing ? '修改' : '新增'}</Typography.Text>}
     >
       {lastError ? (
-        <Alert
-          showIcon
-          type="error"
+        <AppFeedbackBanner
+          tone="error"
           title={isEditing ? '禁入区保存失败' : '禁入区新增失败'}
           description={lastError}
           className="zone-editor-alert"
@@ -51,8 +52,7 @@ export function NoGoEditorPanel({
       ) : null}
 
       {!draftRect ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        <AppEmptyState
           description={
             isEditing
               ? '正在加载所选禁入区的几何信息。'
@@ -62,18 +62,10 @@ export function NoGoEditorPanel({
       ) : (
         <>
           <Descriptions column={1} size="small" colon={false}>
-            {isEditing ? (
-              <Descriptions.Item label="禁入区 ID">{editingAreaId ?? '--'}</Descriptions.Item>
-            ) : null}
-            <Descriptions.Item label="宽度">
-              {formatNumber(draftRect.widthM, 3)}
-            </Descriptions.Item>
-            <Descriptions.Item label="高度">
-              {formatNumber(draftRect.heightM, 3)}
-            </Descriptions.Item>
-            <Descriptions.Item label="面积">
-              {formatNumber(draftRect.areaM2, 3)}
-            </Descriptions.Item>
+            {isEditing ? <Descriptions.Item label="禁入区 ID">{editingAreaId ?? '--'}</Descriptions.Item> : null}
+            <Descriptions.Item label="宽度">{formatNumber(draftRect.widthM, 3)}</Descriptions.Item>
+            <Descriptions.Item label="高度">{formatNumber(draftRect.heightM, 3)}</Descriptions.Item>
+            <Descriptions.Item label="面积">{formatNumber(draftRect.areaM2, 3)}</Descriptions.Item>
             <Descriptions.Item label="显示坐标系">
               {draftRect.displayFrame?.frameId ?? '--'}
             </Descriptions.Item>
@@ -91,12 +83,7 @@ export function NoGoEditorPanel({
           </div>
 
           <Space wrap className="zone-preview-actions">
-            <Button
-              type="primary"
-              onClick={onSave}
-              loading={isSaving}
-              disabled={!displayName.trim()}
-            >
+            <Button type="primary" onClick={onSave} loading={isSaving} disabled={!displayName.trim()}>
               {isEditing ? '保存修改' : '保存禁入区'}
             </Button>
             <Button onClick={onCancel} disabled={isSaving}>
@@ -105,7 +92,7 @@ export function NoGoEditorPanel({
           </Space>
 
           <Typography.Paragraph className="workbench-footnote zone-preview-footnote">
-            前端当前只编辑 `display_region`，最终写入后的几何数据仍以后端保存结果为准。
+            前端当前只编辑 `display_region`，最终以后端保存后的几何结果为准。
           </Typography.Paragraph>
         </>
       )}

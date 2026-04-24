@@ -2,16 +2,14 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Alert,
   Button,
   Card,
   Descriptions,
-  Empty,
   Form,
   Input,
+  Modal,
   Popconfirm,
   Space,
-  Spin,
   Switch,
   Tag,
   Typography,
@@ -24,8 +22,10 @@ import {
   RadarChartOutlined,
 } from '@ant-design/icons'
 
-import { AlignmentCard } from '../components/alignment/AlignmentCard'
 import { MapCanvas } from '../components/canvas/MapCanvas'
+import { AppEmptyState } from '../components/feedback/AppEmptyState'
+import { AppFeedbackBanner } from '../components/feedback/AppFeedbackBanner'
+import { AppLoadingState } from '../components/feedback/AppLoadingState'
 import { NoGoEditorPanel } from '../components/constraint-editor/NoGoEditorPanel'
 import { NoGoEditorToolbar } from '../components/constraint-editor/NoGoEditorToolbar'
 import { NoGoDetailsPanel } from '../components/constraint-editor/NoGoDetailsPanel'
@@ -35,7 +35,6 @@ import { VirtualWallEditorPanel } from '../components/wall-editor/VirtualWallEdi
 import { VirtualWallEditorToolbar } from '../components/wall-editor/VirtualWallEditorToolbar'
 import { ZoneEditorToolbar } from '../components/zone-editor/ZoneEditorToolbar'
 import { ZonePreviewPanel } from '../components/zone-editor/ZonePreviewPanel'
-import { useAlignment } from '../hooks/useAlignment'
 import { useInputCapabilities } from '../hooks/useInputCapabilities'
 import { useMapWorkbenchData } from '../hooks/useMapWorkbenchData'
 import { useProfileCatalog } from '../hooks/useProfileCatalog'
@@ -54,6 +53,7 @@ import {
   fetchZonePlanPath,
   fetchNoGoAreaDetail,
   fetchVirtualWallDetail,
+  checkMapImportPreflight,
   importCurrentMapAsset,
   modifyNoGoArea,
   modifyVirtualWall,
@@ -61,6 +61,7 @@ import {
 import { useConstraintEditorStore } from '../stores/constraintEditorStore'
 import { useMapWorkbenchStore } from '../stores/mapWorkbenchStore'
 import { useZoneEditorStore } from '../stores/zoneEditorStore'
+import type { GatewayErrorShape } from '../types/appShell'
 import type {
   AreaEntity,
   LayerKey,
@@ -114,6 +115,18 @@ type MapAssetImportFormValues = {
   mapName: string
   description: string
   setActive: boolean
+}
+
+type MapImportFeedbackState = {
+  type: 'success' | 'warning' | 'error'
+  message: string
+}
+
+type MapImportPreflightResult = {
+  canImport: boolean
+  status: string
+  message: string
+  expectedPath: string | null
 }
 
 function getConnectionTag(status: string) {
@@ -314,6 +327,141 @@ function getTrimmedRawString(
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : ''
 }
 
+function buildZonePreviewFeedbackMessage(options: {
+  estimatedLengthM: number | null
+  estimatedDurationS: number | null
+  areaM2: number | null
+}) {
+  const parts: string[] = []
+
+  if (options.estimatedLengthM !== null) {
+    parts.push(`预计长度 ${formatNumber(options.estimatedLengthM, 1)} m`)
+  }
+
+  if (options.estimatedDurationS !== null) {
+    parts.push(`预计时长 ${formatNumber(options.estimatedDurationS, 0)} s`)
+  }
+
+  if (options.areaM2 !== null) {
+    parts.push(`影响范围 ${formatNumber(options.areaM2, 1)} m²`)
+  }
+
+  return parts.join(' | ') || '后端已返回新的覆盖路径预览。'
+}
+
+function toGatewayErrorShape(error: unknown): GatewayErrorShape | null {
+  if (
+    error instanceof Error &&
+    'code' in error &&
+    'source' in error &&
+    'recoverable' in error &&
+    'requiresEngineer' in error &&
+    'missingDependency' in error
+  ) {
+    return error as GatewayErrorShape
+  }
+
+  return null
+}
+
+function formatMapImportBlockedFeedback(
+  preflight: MapImportPreflightResult,
+): MapImportFeedbackState {
+  switch (preflight.status) {
+    case 'MAP_IMPORT_INVALID_NAME':
+      return {
+        type: 'warning',
+        message: '请填写与现场保存的 pbstream 文件完全一致的地图名称，再重新检查。',
+      }
+    case 'MAP_IMPORT_PBSTREAM_MISSING':
+      return {
+        type: 'warning',
+        message:
+          preflight.expectedPath?.trim()
+            ? `当前环境缺少 pbstream 文件，暂不可导入。请先确认文件存在：${preflight.expectedPath}`
+            : preflight.message,
+      }
+    case 'MAP_IMPORT_PBSTREAM_DIR_MISSING':
+      return {
+        type: 'error',
+        message: preflight.message,
+      }
+    default:
+      return {
+        type: preflight.canImport ? 'success' : 'warning',
+        message: preflight.message,
+      }
+  }
+}
+
+function formatMapImportFailureFeedback(
+  error: unknown,
+  phase: 'preflight' | 'import',
+): MapImportFeedbackState {
+  const gatewayError = toGatewayErrorShape(error)
+  const fallbackMessage =
+    error instanceof Error
+      ? error.message
+      : phase === 'preflight'
+        ? '导入前置检查失败，暂不发起导入。'
+        : '地图资产导入失败，请稍后重试。'
+
+  if (gatewayError) {
+    switch (gatewayError.code) {
+      case 'MAP_IMPORT_INVALID_NAME':
+        return {
+          type: 'warning',
+          message: '请填写与现场保存的 pbstream 文件完全一致的地图名称，再重新尝试。',
+        }
+      case 'MAP_IMPORT_PBSTREAM_MISSING':
+        return {
+          type: 'warning',
+          message: gatewayError.message,
+        }
+      case 'MAP_IMPORT_PBSTREAM_DIR_MISSING':
+        return {
+          type: 'error',
+          message: gatewayError.message,
+        }
+      default:
+        if (gatewayError.missingDependency) {
+          return {
+            type: 'error',
+            message:
+              phase === 'preflight'
+                ? `导入前置检查接口暂不可用，请检查 ${gatewayError.missingDependency}。后端返回：${gatewayError.message}`
+                : `地图资产导入接口暂不可用，请检查 ${gatewayError.missingDependency}。后端返回：${gatewayError.message}`,
+          }
+        }
+
+        if (gatewayError.code === 'GATEWAY_HTTP_ERROR') {
+          return {
+            type: 'error',
+            message:
+              phase === 'preflight'
+                ? `导入前置检查失败，站点网关暂时没有给出有效响应。后端返回：${gatewayError.message}`
+                : `地图资产导入失败，站点网关暂时没有给出有效响应。后端返回：${gatewayError.message}`,
+          }
+        }
+    }
+  }
+
+  if (/pbstream|no such file|not found|missing/i.test(fallbackMessage)) {
+    return {
+      type: 'warning',
+      message: `当前环境缺少 pbstream 文件，暂不可导入。后端返回：${fallbackMessage}`,
+    }
+  }
+
+  return {
+    type: 'error',
+    message:
+      phase === 'preflight'
+        ? `导入前置检查失败：${fallbackMessage}`
+        : `地图资产导入失败：${fallbackMessage}`,
+  }
+}
+
 export function MapWorkbenchPage() {
   const [mapImportForm] = Form.useForm<MapAssetImportFormValues>()
   const [showDiagnostics, setShowDiagnostics] = useState(false)
@@ -331,11 +479,20 @@ export function MapWorkbenchPage() {
     type: 'success' | 'error'
     message: string
   } | null>(null)
-  const [isImportingMapAsset, setIsImportingMapAsset] = useState(false)
-  const [mapImportFeedback, setMapImportFeedback] = useState<{
-    type: 'success' | 'error'
+  const [zoneCommitFeedback, setZoneCommitFeedback] = useState<{
+    mode: 'create' | 'edit'
+    zoneId: string
+    zoneVersion: number | null
+    planId: string | null
+    warnings: string[]
+  } | null>(null)
+  const [zonePreviewFeedback, setZonePreviewFeedback] = useState<{
+    type: 'success' | 'warning'
     message: string
   } | null>(null)
+  const [isImportingMapAsset, setIsImportingMapAsset] = useState(false)
+  const [isCheckingMapImport, setIsCheckingMapImport] = useState(false)
+  const [mapImportFeedback, setMapImportFeedback] = useState<MapImportFeedbackState | null>(null)
   const [isToolsDrawerOpen, setIsToolsDrawerOpen] = useState(false)
   const [isDetailsDrawerOpen, setIsDetailsDrawerOpen] = useState(false)
   const [isTabletDrawerViewport, setIsTabletDrawerViewport] = useState(
@@ -343,8 +500,8 @@ export function MapWorkbenchPage() {
   )
   const queryClient = useQueryClient()
   const { isTouchCapable, isCoarsePointer } = useInputCapabilities()
-  const { snapshot, defaultUrl, quickUrls, connect } = useRosConnection()
-  const servicesReady = snapshot.isConnected || snapshot.status === 'mock'
+  const { snapshot, defaultUrl, connect } = useRosConnection()
+  const servicesReady = snapshot.status !== 'connecting'
   const rosDebug = useRosDebug()
   const {
     data,
@@ -352,7 +509,8 @@ export function MapWorkbenchPage() {
     mapError,
     mapQueryFetchStatus,
     mapQueryStatus,
-    alignmentError,
+    zonesQueryFetchStatus,
+    zonesQueryStatus,
     zonesError,
     noGoAreasError,
     virtualWallsError,
@@ -371,7 +529,6 @@ export function MapWorkbenchPage() {
   const zoneMode = useZoneEditorStore((state) => state.mode)
   const activeAlignment = useZoneEditorStore((state) => state.activeAlignment)
   const editingZone = useZoneEditorStore((state) => state.editingZone)
-  const alignmentPoints = useZoneEditorStore((state) => state.alignmentPoints)
   const zoneDraftRectPoints = useZoneEditorStore((state) => state.draftRectPoints)
   const zoneDraftDisplayRegion = useZoneEditorStore(
     (state) => state.draftDisplayRegion,
@@ -379,12 +536,10 @@ export function MapWorkbenchPage() {
   const zoneDraftRect = useZoneEditorStore((state) => state.draftRect)
   const draftPreview = useZoneEditorStore((state) => state.draftPreview)
   const zoneLastError = useZoneEditorStore((state) => state.lastError)
-  const startAligning = useZoneEditorStore((state) => state.startAligning)
   const startCreatingZone = useZoneEditorStore((state) => state.startCreatingZone)
   const startEditingZone = useZoneEditorStore((state) => state.startEditingZone)
   const cancelZoneMode = useZoneEditorStore((state) => state.cancelMode)
   const setActiveAlignment = useZoneEditorStore((state) => state.setActiveAlignment)
-  const setAlignmentPoints = useZoneEditorStore((state) => state.setAlignmentPoints)
   const setZoneDraftRectPoints = useZoneEditorStore(
     (state) => state.setDraftRectPoints,
   )
@@ -560,6 +715,11 @@ export function MapWorkbenchPage() {
 
     return layerVisibility.zone ? data.zones : []
   }, [data.zones, layerVisibility.zone, selectedZoneEntity, showSelectedZoneOnly])
+  const isZoneListLoading =
+    hasMap &&
+    data.zones.length === 0 &&
+    !zonesError &&
+    (zonesQueryStatus === 'pending' || zonesQueryFetchStatus === 'fetching')
   const planProfileCatalog = useProfileCatalog({
     profileKind: 'plan',
     mapName: workspaceMapName,
@@ -572,11 +732,6 @@ export function MapWorkbenchPage() {
   const defaultPlanProfileName =
     planProfileCatalog.defaultEntry?.profileName ?? inferredZoneProfileName
   const effectiveProfileName = profileName.trim() || defaultPlanProfileName
-  const { confirmAlignment, isConfirming } = useAlignment(
-    data.map,
-    effectiveAlignment,
-    workspaceMapName,
-  )
   const { previewRectZone, isPreviewingRect } = useZoneRectPreview(
     data.map,
     effectiveAlignment,
@@ -647,6 +802,51 @@ export function MapWorkbenchPage() {
       ? draftWallPath ?? draftWall?.displayPath ?? null
       : null
   const isAnyEditorActive = zoneMode !== 'idle' || constraintMode !== 'idle'
+  const activeEditorSummary = useMemo(() => {
+    if (zoneMode === 'creating-zone') {
+      return {
+        title: '正在新建覆盖区',
+        description: '当前覆盖区草稿尚未提交，退出后会丢失本次草稿和预览结果。',
+      }
+    }
+
+    if (zoneMode === 'editing-zone') {
+      return {
+        title: '正在编辑覆盖区',
+        description: '当前覆盖区修改尚未保存，退出后会丢失本次几何和参数调整。',
+      }
+    }
+
+    if (constraintMode === 'creating-no-go') {
+      return {
+        title: '正在新建禁入区',
+        description: '当前禁入区草稿尚未保存，退出后会丢失本次矩形草稿。',
+      }
+    }
+
+    if (constraintMode === 'editing-no-go') {
+      return {
+        title: '正在编辑禁入区',
+        description: '当前禁入区修改尚未保存，退出后会丢失本次边界调整。',
+      }
+    }
+
+    if (constraintMode === 'creating-wall') {
+      return {
+        title: '正在新建虚拟墙',
+        description: '当前虚拟墙草稿尚未保存，退出后会丢失本次端点和缓冲距离设置。',
+      }
+    }
+
+    if (constraintMode === 'editing-wall') {
+      return {
+        title: '正在编辑虚拟墙',
+        description: '当前虚拟墙修改尚未保存，退出后会丢失本次路径和缓冲距离调整。',
+      }
+    }
+
+    return null
+  }, [constraintMode, zoneMode])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -680,6 +880,65 @@ export function MapWorkbenchPage() {
     setIsToolsDrawerOpen(false)
     setIsDetailsDrawerOpen(false)
   }
+
+  const confirmDiscardEditing = (options: {
+    title: string
+    description: string
+    onConfirm: () => void
+  }) => {
+    Modal.confirm({
+      title: options.title,
+      content: options.description,
+      okText: '放弃变更',
+      cancelText: '继续编辑',
+      okButtonProps: { danger: true },
+      onOk: options.onConfirm,
+    })
+  }
+
+  const handleCancelZoneEditing = () => {
+    if (zoneMode === 'idle') {
+      cancelZoneMode()
+      return
+    }
+
+    confirmDiscardEditing({
+      title: zoneMode === 'editing-zone' ? '放弃本次覆盖区修改？' : '放弃当前覆盖区草稿？',
+      description:
+        zoneMode === 'editing-zone'
+          ? '当前覆盖区还有未保存的修改。确认退出后，本次几何和参数调整都会丢失。'
+          : '当前覆盖区草稿和路径预览还没有提交。确认退出后，需要重新开始编辑。',
+      onConfirm: () => {
+        setZonePreviewFeedback(null)
+        cancelZoneMode()
+      },
+    })
+  }
+
+  const handleCancelConstraintEditing = () => {
+    if (constraintMode === 'idle') {
+      cancelConstraintMode()
+      return
+    }
+
+    const description =
+      constraintMode === 'editing-no-go'
+        ? '当前禁入区还有未保存的修改。确认退出后，本次边界调整会丢失。'
+        : constraintMode === 'creating-no-go'
+          ? '当前禁入区草稿还没有保存。确认退出后，需要重新开始绘制。'
+          : constraintMode === 'editing-wall'
+            ? '当前虚拟墙还有未保存的修改。确认退出后，本次路径和缓冲设置会丢失。'
+            : '当前虚拟墙草稿还没有保存。确认退出后，需要重新开始绘制。'
+
+    confirmDiscardEditing({
+      title: '放弃当前编辑？',
+      description,
+      onConfirm: () => {
+        cancelConstraintMode()
+      },
+    })
+  }
+
   const canRenderCanvas =
     hasMap ||
     data.zones.length > 0 ||
@@ -708,6 +967,22 @@ export function MapWorkbenchPage() {
   useEffect(() => {
     setSelectedZoneId(selected?.kind === 'zone' ? selected.id : null)
   }, [selected, setSelectedZoneId])
+
+  useEffect(() => {
+    if (
+      !selectedZoneEntity &&
+      data.zones.length === 1 &&
+      (showSelectedZoneOnly || showSelectedZonePath)
+    ) {
+      select({ kind: 'zone', id: data.zones[0].id })
+    }
+  }, [
+    data.zones,
+    select,
+    selectedZoneEntity,
+    showSelectedZoneOnly,
+    showSelectedZonePath,
+  ])
 
   useEffect(() => {
     setSelectedNoGoAreaId(selected?.kind === 'noGoArea' ? selected.id : null)
@@ -747,6 +1022,22 @@ export function MapWorkbenchPage() {
     }
 
     setMapImportFeedback(null)
+    setIsCheckingMapImport(true)
+
+    try {
+      const preflight = await checkMapImportPreflight(values.mapName)
+
+      if (!preflight.canImport) {
+        setMapImportFeedback(formatMapImportBlockedFeedback(preflight))
+        return
+      }
+    } catch (error) {
+      setMapImportFeedback(formatMapImportFailureFeedback(error, 'preflight'))
+      return
+    } finally {
+      setIsCheckingMapImport(false)
+    }
+
     setIsImportingMapAsset(true)
 
     try {
@@ -765,11 +1056,7 @@ export function MapWorkbenchPage() {
         message: result.message,
       })
     } catch (error) {
-      setMapImportFeedback({
-        type: 'error',
-        message:
-          error instanceof Error ? error.message : 'Map asset import failed.',
-      })
+      setMapImportFeedback(formatMapImportFailureFeedback(error, 'import'))
     } finally {
       setIsImportingMapAsset(false)
     }
@@ -783,22 +1070,6 @@ export function MapWorkbenchPage() {
     effectiveAlignment?.alignedFrame ??
     data.map?.displayFrame?.frameId ??
     'map'
-
-  const handleAlignmentPointPick = (point: Point2D) => {
-    if (zoneMode !== 'aligning' || isConfirming) {
-      return
-    }
-
-    const nextPoints =
-      alignmentPoints.length === 0 ? [point] : [alignmentPoints[0], point]
-
-    setZoneLastError(null)
-    setAlignmentPoints(nextPoints)
-
-    if (nextPoints.length === 2) {
-      void confirmAlignment([nextPoints[0], nextPoints[1]]).catch(() => undefined)
-    }
-  }
 
   const handleZoneRectPointPick = (point: Point2D) => {
     if (zoneMode !== 'creating-zone' || isPreviewingRect) {
@@ -887,11 +1158,6 @@ export function MapWorkbenchPage() {
   }
 
   const handleCanvasPointPick = (point: Point2D) => {
-    if (zoneMode === 'aligning') {
-      handleAlignmentPointPick(point)
-      return
-    }
-
     if (zoneMode === 'creating-zone') {
       handleZoneRectPointPick(point)
       return
@@ -911,12 +1177,15 @@ export function MapWorkbenchPage() {
     closeWorkbenchDrawers()
     setDraftDisplayName(buildDefaultZoneName())
     setProfileName(defaultPlanProfileName)
+    setZoneCommitFeedback(null)
+    setZonePreviewFeedback(null)
     startCreatingZone()
   }
 
   const handleStartCreatingNoGo = () => {
     closeWorkbenchDrawers()
     setDraftNoGoName(buildDefaultNoGoName())
+    setZonePreviewFeedback(null)
     startCreatingNoGo()
   }
 
@@ -925,6 +1194,7 @@ export function MapWorkbenchPage() {
     setDraftWallName(buildDefaultWallName())
     setDraftWallEnabled(true)
     setDraftWallBufferM(0.2)
+    setZonePreviewFeedback(null)
     startCreatingWall()
   }
 
@@ -938,6 +1208,8 @@ export function MapWorkbenchPage() {
     setIsLoadingZoneDetail(true)
     setZoneLastError(null)
     setZoneActionFeedback(null)
+    setZoneCommitFeedback(null)
+    setZonePreviewFeedback(null)
 
     try {
       const detail = await fetchCoverageZoneDetail({
@@ -1005,6 +1277,7 @@ export function MapWorkbenchPage() {
     closeWorkbenchDrawers()
     setIsLoadingNoGoDetail(true)
     setConstraintLastError(null)
+    setZonePreviewFeedback(null)
 
     try {
       const detail = await fetchNoGoAreaDetail({
@@ -1056,6 +1329,7 @@ export function MapWorkbenchPage() {
     closeWorkbenchDrawers()
     setIsLoadingWallDetail(true)
     setConstraintLastError(null)
+    setZonePreviewFeedback(null)
 
     try {
       const detail = await fetchVirtualWallDetail({
@@ -1256,10 +1530,22 @@ export function MapWorkbenchPage() {
       return
     }
 
+    setZonePreviewFeedback(null)
     void previewZone({
       region,
       profileName: effectiveProfileName,
-    }).catch(() => undefined)
+    })
+      .then((preview) => {
+        setZonePreviewFeedback({
+          type: preview.valid === false ? 'warning' : 'success',
+          message: buildZonePreviewFeedbackMessage({
+            estimatedLengthM: preview.estimatedLengthM,
+            estimatedDurationS: preview.estimatedDurationS,
+            areaM2: zoneDraftRect.areaM2,
+          }),
+        })
+      })
+      .catch(() => undefined)
   }
 
   const handleCommitZone = async () => {
@@ -1294,6 +1580,21 @@ export function MapWorkbenchPage() {
 
       await refetchWorkbenchData()
 
+      setZoneCommitFeedback({
+        mode: editingZone ? 'edit' : 'create',
+        zoneId: result.zoneId,
+        zoneVersion: result.zoneVersion,
+        planId: result.planId,
+        warnings: result.warnings,
+      })
+      setZonePreviewFeedback({
+        type: 'success',
+        message: [
+          `zone_id：${result.zoneId}`,
+          `version：${result.zoneVersion ?? '--'}`,
+          `plan_id：${result.planId ?? '--'}`,
+        ].join(' | '),
+      })
       select({ kind: 'zone', id: result.zoneId })
       cancelZoneMode()
     } catch (error) {
@@ -1606,49 +1907,66 @@ export function MapWorkbenchPage() {
           <RosbridgeEndpointControl
             snapshot={snapshot}
             defaultUrl={defaultUrl}
-            quickUrls={quickUrls}
             onConnect={handleReconnect}
           />
         </Space>
       </header>
 
       {snapshot.status === 'error' && snapshot.lastError ? (
-        <Alert
-          showIcon
-          type="error"
-          title="rosbridge 连接失败"
+        <AppFeedbackBanner
+          tone="error"
+          title="站点网关 ROS 连接失败"
           description={snapshot.lastError}
           className="workbench-banner"
         />
       ) : null}
 
       {snapshot.status === 'mock' ? (
-        <Alert
-          showIcon
-          type="info"
-          title="The page is using local mock data"
-          description="Set VITE_USE_MOCK_DATA=false in .env.development to connect to the live backend."
+        <AppFeedbackBanner
+          tone="info"
+          title="当前页面正在使用本地 Mock 数据"
+          description="在 .env.development 中设置 VITE_USE_MOCK_DATA=false 后，可切回 live 后端。"
           className="workbench-banner"
         />
       ) : null}
 
       {mapError && !hasDrawableLayers ? (
-        <Alert
-          showIcon
-          type="error"
-          title="Current map failed to load"
+        <AppFeedbackBanner
+          tone="error"
+          title="当前地图加载失败"
           description={mapError.message}
           className="workbench-banner"
         />
       ) : null}
 
       {mapError && hasDrawableLayers ? (
-        <Alert
-          showIcon
-          type="warning"
-          title="Base map metadata is temporarily unavailable"
-          description="The workbench is continuing in layer-only mode while the current map service is unavailable."
+        <AppFeedbackBanner
+          tone="warning"
+          title="底图元数据暂不可用"
+          description="页面已自动降级为图层模式，当前仍可继续查看和编辑已返回的业务图层。"
           className="workbench-banner"
+        />
+      ) : null}
+
+      {activeEditorSummary ? (
+        <AppFeedbackBanner
+          tone="warning"
+          title={activeEditorSummary.title}
+          description={activeEditorSummary.description}
+          className="workbench-banner"
+        />
+      ) : null}
+
+      {zonePreviewFeedback ? (
+        <AppFeedbackBanner
+          closable
+          tone={zonePreviewFeedback.type}
+          title={
+            zonePreviewFeedback.type === 'success' ? '覆盖区反馈已更新' : '覆盖区预览需要调整'
+          }
+          description={zonePreviewFeedback.message}
+          className="workbench-banner"
+          onClose={() => setZonePreviewFeedback(null)}
         />
       ) : null}
 
@@ -1658,17 +1976,6 @@ export function MapWorkbenchPage() {
             useDrawerPanels ? 'is-drawer-mode' : ''
           } ${isToolsDrawerOpen ? 'is-open' : ''}`}
         >
-          <AlignmentCard
-            alignment={effectiveAlignment}
-            hasMap={hasWorkspaceContext}
-            mode={zoneMode}
-            points={alignmentPoints}
-            isConfirming={isConfirming}
-            lastError={zoneLastError}
-            onStart={startAligning}
-            onCancel={cancelZoneMode}
-          />
-
           <ZoneEditorToolbar
             hasMap={hasWorkspaceContext}
             hasAlignment={hasAlignment}
@@ -1678,7 +1985,7 @@ export function MapWorkbenchPage() {
             lastError={zoneLastError}
             disableStart={constraintMode !== 'idle'}
             onStart={handleStartCreatingZone}
-            onCancel={cancelZoneMode}
+            onCancel={handleCancelZoneEditing}
           />
 
           <NoGoEditorToolbar
@@ -1689,7 +1996,7 @@ export function MapWorkbenchPage() {
             lastError={constraintLastError}
             disableStart={zoneMode !== 'idle' || constraintMode !== 'idle'}
             onStart={handleStartCreatingNoGo}
-            onCancel={cancelConstraintMode}
+            onCancel={handleCancelConstraintEditing}
           />
 
           <VirtualWallEditorToolbar
@@ -1700,24 +2007,24 @@ export function MapWorkbenchPage() {
             lastError={constraintLastError}
             disableStart={zoneMode !== 'idle' || constraintMode !== 'idle'}
             onStart={handleStartCreatingWall}
-            onCancel={cancelConstraintMode}
+            onCancel={handleCancelConstraintEditing}
           />
 
           <Card title="当前地图" className="workbench-card" extra={<ApartmentOutlined />}>
             {data.map ? (
-                <Descriptions column={1} size="small" colon={false}>
-                  <Descriptions.Item label="名称">{data.map.name}</Descriptions.Item>
-                  <Descriptions.Item label="ID">{data.map.id}</Descriptions.Item>
-                  <Descriptions.Item label="分辨率">
-                    {formatNumber(data.map.resolution, 4)}
-                  </Descriptions.Item>
+              <Descriptions column={1} size="small" colon={false}>
+                <Descriptions.Item label="名称">{data.map.name}</Descriptions.Item>
+                <Descriptions.Item label="ID">{data.map.id}</Descriptions.Item>
+                <Descriptions.Item label="分辨率">
+                  {formatNumber(data.map.resolution, 4)}
+                </Descriptions.Item>
                 <Descriptions.Item label="栅格尺寸">
                   {data.map.occupancyGrid?.width ?? '--'} x{' '}
                   {data.map.occupancyGrid?.height ?? '--'}
                 </Descriptions.Item>
-                  <Descriptions.Item label="显示坐标系">
-                    {data.map.displayFrame?.frameId ?? '--'}
-                  </Descriptions.Item>
+                <Descriptions.Item label="显示坐标系">
+                  {data.map.displayFrame?.frameId ?? '--'}
+                </Descriptions.Item>
               </Descriptions>
             ) : hasWorkspaceContext ? (
               <Space orientation="vertical" size="small" style={{ width: '100%' }}>
@@ -1741,15 +2048,9 @@ export function MapWorkbenchPage() {
                 </Typography.Paragraph>
               </Space>
             ) : isInitialLoading ? (
-              <div className="workbench-card-placeholder">
-                <Spin />
-                <Typography.Text>正在加载当前地图元数据...</Typography.Text>
-              </div>
+              <AppLoadingState message="正在加载当前地图元数据..." />
             ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={mapError?.message ?? '当前还没有可用的活动地图。'}
-              />
+              <AppEmptyState description={mapError?.message ?? '当前还没有可用的活动地图。'} />
             )}
           </Card>
 
@@ -1759,13 +2060,14 @@ export function MapWorkbenchPage() {
             extra={<Tag color="cyan">手动</Tag>}
           >
             {mapImportFeedback ? (
-              <Alert
-                showIcon
+              <AppFeedbackBanner
                 closable
-                type={mapImportFeedback.type}
+                tone={mapImportFeedback.type}
                 title={
                   mapImportFeedback.type === 'success'
                     ? '地图资产导入完成'
+                    : mapImportFeedback.type === 'warning'
+                      ? '地图资产导入前置检查未通过'
                     : '地图资产导入失败'
                 }
                 description={mapImportFeedback.message}
@@ -1775,9 +2077,9 @@ export function MapWorkbenchPage() {
             ) : null}
 
             <Typography.Paragraph className="workbench-footnote map-import-note">
-              这里会把当前 Cartographer 保存文件{' '}
-              <code>/opt/carto/map/&lt;map_name&gt;.pbstream</code> into the
-              受管地图资产目录中。请填写与操作员保存 pbstream 时完全一致的地图名称。
+              这里会把当前 Cartographer 保存的文件{' '}
+              <code>/opt/carto/map/&lt;map_name&gt;.pbstream</code>{' '}
+              导入到受管地图资产目录。请填写与操作员保存 pbstream 时完全一致的地图名称。
             </Typography.Paragraph>
 
             <Form<MapAssetImportFormValues>
@@ -1826,11 +2128,11 @@ export function MapWorkbenchPage() {
               <Space wrap>
                 <Button
                   type="primary"
-                  loading={isImportingMapAsset}
+                  loading={isCheckingMapImport || isImportingMapAsset}
                   disabled={!servicesReady || isAnyEditorActive}
                   onClick={() => void handleImportCurrentMapAsset()}
                 >
-                  导入当前地图资产
+                  {isCheckingMapImport ? '正在检查导入前置条件' : '导入当前地图资产'}
                 </Button>
                 <Button
                   disabled={isImportingMapAsset}
@@ -1891,8 +2193,14 @@ export function MapWorkbenchPage() {
             </div>
 
             <Typography.Paragraph className="workbench-footnote">
-              覆盖区轮廓仍然来自 `/database_server/coverage_zone_service getAll`。当前覆盖区的活动路径只会在选中后按需加载。“仅显示当前覆盖区”会优先于“显示全部覆盖区”。
+              覆盖区轮廓仍然来自 `/database_server/site/coverage_zone_service getAll`。当前覆盖区的活动路径只会在选中后按需加载。“仅显示当前覆盖区”会优先于“显示全部覆盖区”。
             </Typography.Paragraph>
+
+            {isZoneListLoading ? (
+              <Typography.Paragraph className="workbench-footnote zone-focus-note">
+                覆盖区列表仍在加载中。加载完成后，若当前地图只有 1 个覆盖区，页面会自动把它设为当前覆盖区。
+              </Typography.Paragraph>
+            ) : null}
 
             {showSelectedZoneOnly && !selectedZoneEntity ? (
               <Typography.Paragraph className="workbench-footnote zone-focus-note">
@@ -1940,6 +2248,12 @@ export function MapWorkbenchPage() {
                         </button>
                       ))}
                     </div>
+                  ) : group.key === 'zone' && isZoneListLoading ? (
+                    <AppLoadingState
+                      compact
+                      className="workbench-loading workbench-loading-compact"
+                      message="正在加载覆盖区列表..."
+                    />
                   ) : (
                     <Typography.Paragraph className="workbench-footnote object-group-empty">
                       {group.emptyText}
@@ -1998,7 +2312,7 @@ export function MapWorkbenchPage() {
                 <Descriptions.Item label="虚拟墙数量">
                   {data.virtualWalls.length}
                 </Descriptions.Item>
-                <Descriptions.Item label="rosbridge 状态">
+                <Descriptions.Item label="站点网关 ROS 状态">
                   <Tag color={connectionTag.color}>{connectionTag.label}</Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label="地图查询状态">
@@ -2064,7 +2378,6 @@ export function MapWorkbenchPage() {
                 virtualWalls={data.virtualWalls}
                 layerVisibility={layerVisibility}
                 mode={canvasMode}
-                alignmentPoints={alignmentPoints}
                 draftRectPoints={canvasDraftRectPoints}
                 draftDisplayRegion={canvasDraftDisplayRegion}
                 draftWallPoints={canvasDraftWallPoints}
@@ -2082,22 +2395,16 @@ export function MapWorkbenchPage() {
                 onSelect={select}
               />
             ) : isInitialLoading ? (
-                <div className="workbench-loading">
-                  <Spin size="large" />
-                  <Typography.Text>
-                    正在连接 rosbridge 并加载当前地图...
-                  </Typography.Text>
-                </div>
-              ) : mapError ? (
-                <Alert
-                  showIcon
-                  type="error"
-                  title="当前地图或可绘制图层加载失败"
-                  description={mapError.message}
-                />
-              ) : (
-                <Empty description="当前还没有可用的活动地图。" />
-              )}
+              <AppLoadingState className="workbench-loading" message="正在等待站点网关加载当前地图快照..." />
+            ) : mapError ? (
+              <AppFeedbackBanner
+                tone="error"
+                title="当前地图或可绘制图层加载失败"
+                description={mapError.message}
+              />
+            ) : (
+              <AppEmptyState description="当前还没有可用的活动地图。" />
+            )}
           </Card>
         </main>
 
@@ -2123,11 +2430,13 @@ export function MapWorkbenchPage() {
             isPreviewingPlan={isPreviewingZone}
             isCommitting={isCommittingZone}
             lastError={zoneLastError}
+            hasUnsavedChanges={zoneMode !== 'idle'}
+            lastCommitSummary={zoneCommitFeedback}
             onDisplayNameChange={setDraftDisplayName}
             onProfileNameChange={setProfileName}
             onPreviewPlan={handlePreviewPlan}
             onCommitZone={handleCommitZone}
-            onCancel={cancelZoneMode}
+            onCancel={handleCancelZoneEditing}
           />
 
           <NoGoEditorPanel
@@ -2139,7 +2448,7 @@ export function MapWorkbenchPage() {
             lastError={constraintLastError}
             onDisplayNameChange={setDraftNoGoName}
             onSave={handleSaveNoGo}
-            onCancel={cancelConstraintMode}
+            onCancel={handleCancelConstraintEditing}
           />
 
           <VirtualWallEditorPanel
@@ -2155,7 +2464,7 @@ export function MapWorkbenchPage() {
             onEnabledChange={setDraftWallEnabled}
             onBufferChange={setDraftWallBufferM}
             onSave={handleSaveWall}
-            onCancel={cancelConstraintMode}
+            onCancel={handleCancelConstraintEditing}
           />
 
           {selectedNoGoAreaEntity ? (
@@ -2264,15 +2573,10 @@ export function MapWorkbenchPage() {
               }
             >
               {zoneActionFeedback ? (
-                <Alert
-                  showIcon
+                <AppFeedbackBanner
                   closable
-                  type={zoneActionFeedback.type}
-                  title={
-                    zoneActionFeedback.type === 'success'
-                      ? '覆盖区删除完成'
-                      : '覆盖区删除失败'
-                  }
+                  tone={zoneActionFeedback.type}
+                  title={zoneActionFeedback.type === 'success' ? '覆盖区删除完成' : '覆盖区删除失败'}
                   description={zoneActionFeedback.message}
                   className="workbench-inline-alert"
                   onClose={() => setZoneActionFeedback(null)}
@@ -2280,20 +2584,18 @@ export function MapWorkbenchPage() {
               ) : null}
 
               {selectedZoneEntity && showSelectedZonePath && selectedZonePathQuery.isLoading ? (
-                <div className="workbench-loading workbench-loading-compact">
-                  <Spin size="small" />
-                  <Typography.Text>
-                    正在加载当前覆盖区的活动路径...
-                  </Typography.Text>
-                </div>
+                <AppLoadingState
+                  compact
+                  className="workbench-loading workbench-loading-compact"
+                  message="正在加载当前覆盖区的活动路径..."
+                />
               ) : null}
 
               {selectedZoneEntity &&
               showSelectedZonePath &&
               selectedZonePathQuery.error instanceof Error ? (
-                <Alert
-                  showIcon
-                  type="warning"
+                <AppFeedbackBanner
+                  tone="warning"
                   title="当前覆盖区路径暂不可用"
                   description={selectedZonePathQuery.error.message}
                   className="workbench-inline-alert"
@@ -2363,8 +2665,7 @@ export function MapWorkbenchPage() {
                   ) : null}
                 </Space>
               ) : (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                <AppEmptyState
                   description={
                     hasMap
                       ? '请选择一个地图对象查看详情。'
@@ -2389,10 +2690,7 @@ export function MapWorkbenchPage() {
                 ))}
               </Descriptions>
             ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="当前还没有可显示的元数据。"
-              />
+              <AppEmptyState description="当前还没有可显示的元数据。" />
             )}
           </Card>
 
@@ -2404,12 +2702,11 @@ export function MapWorkbenchPage() {
                 ))}
               </ul>
             ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              <AppEmptyState
                 description={
                   mapError
                     ? '地图加载失败，请查看上方错误提示。'
-                    : alignmentError?.message ?? '当前没有激活的告警或提示。'
+                    : '当前没有激活的告警或提示。'
                 }
               />
             )}

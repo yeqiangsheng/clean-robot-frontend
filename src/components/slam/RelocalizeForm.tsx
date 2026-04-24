@@ -1,133 +1,68 @@
-import { useEffect } from 'react'
+import { Button, Card, Form, Input, Space, Typography } from 'antd'
 
-import { Alert, Button, Card, Form, InputNumber, Space, Switch, Tag, Typography } from 'antd'
+import { AppFeedbackBanner } from '../feedback/AppFeedbackBanner'
 
 type RelocalizeFormValues = {
-  hasInitialPose: boolean
-  initialPoseX: number
-  initialPoseY: number
-  initialPoseYaw: number
+  description: string
 }
 
 type RelocalizeFormProps = {
   disabled: boolean
-  expanded: boolean
   loading: boolean
-  manualAssistRequired: boolean
-  manualAssistReason?: string
-  onExpandedChange: (expanded: boolean) => void
+  lastErrorCode?: string
+  lastErrorMessage?: string
   onSubmit: (values: RelocalizeFormValues) => void
-  runtimeMapName?: string
 }
 
 export function RelocalizeForm({
   disabled,
-  expanded,
   loading,
-  manualAssistRequired,
-  manualAssistReason,
-  onExpandedChange,
+  lastErrorCode,
+  lastErrorMessage,
   onSubmit,
-  runtimeMapName,
 }: RelocalizeFormProps) {
   const [form] = Form.useForm<RelocalizeFormValues>()
-  const hasInitialPose = Form.useWatch('hasInitialPose', form) ?? false
-  const assistDescription = [
-    runtimeMapName ? `当前地图：${runtimeMapName}` : null,
-    manualAssistReason
-      ? `后端提示：${manualAssistReason}`
-      : manualAssistRequired
-        ? '后端要求人工辅助，请先提供可靠的初始位姿后再重试。'
-        : null,
-  ]
-    .filter(Boolean)
-    .join(' ')
-
-  useEffect(() => {
-    if (manualAssistRequired) {
-      form.setFieldsValue({
-        hasInitialPose: true,
-      })
-    }
-  }, [form, manualAssistRequired])
 
   return (
-    <Card
-      title="重新定位"
-      className="slam-card"
-      extra={
-        <Space wrap>
-          {manualAssistRequired ? <Tag color="orange">需要人工辅助</Tag> : null}
-          <Button size="small" type="text" onClick={() => onExpandedChange(!expanded)}>
-            {expanded ? '收起' : '展开'}
-          </Button>
-        </Space>
-      }
-    >
+    <Card title="重新定位" className="slam-card">
       <Typography.Paragraph className="slam-card-copy">
-        可以直接提交自动重定位；如果现场需要人工辅助，也可以一并填写初始位姿。
+        通过 `/clean_robot_server/app/submit_slam_command` 提交 `relocalize`
+        动作。只有在 `can_relocalize` 或 `can_restart_localization` 允许时，页面才会放行。
       </Typography.Paragraph>
 
-      {expanded ? (
-        <>
-          {manualAssistRequired ? (
-            <Alert
-              showIcon
-              type="warning"
-              title="重试前请先提供初始位姿"
-              description={assistDescription}
-              className="slam-inline-alert"
-            />
-          ) : null}
+      {lastErrorCode || lastErrorMessage ? (
+        <AppFeedbackBanner
+          tone="warning"
+          title={lastErrorCode || '最近一次重新定位失败'}
+          description={
+            lastErrorMessage ||
+            '请先检查当前定位状态和按钮门禁，再重新提交本次重新定位。'
+          }
+          className="slam-inline-alert"
+        />
+      ) : null}
 
-          <Form<RelocalizeFormValues>
-            form={form}
-            layout="vertical"
-            initialValues={{
-              hasInitialPose: manualAssistRequired,
-              initialPoseX: 0,
-              initialPoseY: 0,
-              initialPoseYaw: 0,
-            }}
-            onFinish={onSubmit}
-          >
-            <Form.Item
-              name="hasInitialPose"
-              label="附带初始位姿"
-              valuePropName="checked"
-            >
-              <Switch disabled={disabled} />
-            </Form.Item>
+      <Form<RelocalizeFormValues>
+        form={form}
+        layout="vertical"
+        initialValues={{
+          description: '',
+        }}
+        onFinish={onSubmit}
+      >
+        <Form.Item name="description" label="说明">
+          <Input disabled={disabled} placeholder="可选，用于记录本次重新定位原因" />
+        </Form.Item>
 
-            {hasInitialPose ? (
-              <div className="slam-inline-grid">
-                <Form.Item name="initialPoseX" label="x">
-                  <InputNumber style={{ width: '100%' }} disabled={disabled} />
-                </Form.Item>
-                <Form.Item name="initialPoseY" label="y">
-                  <InputNumber style={{ width: '100%' }} disabled={disabled} />
-                </Form.Item>
-                <Form.Item name="initialPoseYaw" label="yaw">
-                  <InputNumber style={{ width: '100%' }} disabled={disabled} />
-                </Form.Item>
-              </div>
-            ) : null}
-
-            <Space wrap>
-              <Button type="primary" htmlType="submit" loading={loading} disabled={disabled}>
-                提交重定位
-              </Button>
-              <Button disabled={disabled || loading} onClick={() => form.resetFields()}>
-                重置
-              </Button>
-            </Space>
-          </Form>
-        </>
-      ) : (
-        <Typography.Paragraph className="slam-footnote">
-          展开后可以直接提交自动重定位，也可以在需要人工辅助时填入 `x / y / yaw` 再重试。
-        </Typography.Paragraph>
-      )}
+        <Space wrap>
+          <Button type="primary" htmlType="submit" loading={loading} disabled={disabled}>
+            提交重新定位
+          </Button>
+          <Button disabled={disabled || loading} onClick={() => form.resetFields()}>
+            重置
+          </Button>
+        </Space>
+      </Form>
     </Card>
   )
 }

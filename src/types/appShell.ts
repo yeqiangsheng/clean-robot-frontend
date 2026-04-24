@@ -1,6 +1,4 @@
-export type UserRole = 'operator' | 'service' | 'engineer'
-
-export type EngineerUnlockMode = 'direct'
+export type UserRole = 'operator' | 'service' | 'engineer' | 'admin'
 
 export type AppModuleKey =
   | 'overview'
@@ -35,17 +33,27 @@ export type CapabilityStatusLevel =
 export interface AppConfig {
   siteName: string
   robotId: string
-  rosbridgeUrl: string
-  quickRosbridgeUrls: string[]
+  apiBaseUrl: string
   enabledModules: Partial<Record<AppModuleKey, boolean>>
-  rolePolicy: Partial<Record<UserRole, CapabilityFlag[]>>
-  engineerUnlockMode: EngineerUnlockMode
-  logRetentionDays: number
+  supportName?: string
+  supportPhone?: string
+  supportEmail?: string
 }
 
 export interface AppConfigValidationIssue {
   field: string
   message: string
+}
+
+export interface SessionUser {
+  username: string
+  displayName: string
+  role: UserRole
+}
+
+export interface SessionPayload {
+  user: SessionUser
+  capabilities: CapabilityFlag[]
 }
 
 export interface CapabilityStatusItem {
@@ -54,20 +62,22 @@ export interface CapabilityStatusItem {
   summary: string
   status: CapabilityStatusLevel
   dependencies: string[]
-  source: 'config' | 'rosapi' | 'gateway'
+  source: 'config' | 'gateway'
   missingDependency: string | null
 }
 
 export interface AuditEventRecord {
   id: string
   timestamp: number
+  actor?: string
   role: UserRole
-  category: 'task' | 'actuator' | 'charging' | 'slam' | 'system'
+  category: 'auth' | 'task' | 'actuator' | 'charging' | 'slam' | 'system'
   action: string
   target: string
   status: 'success' | 'blocked' | 'failed'
   message: string
   detail: Record<string, unknown>
+  requestId?: string | null
 }
 
 export interface GatewayErrorShape extends Error {
@@ -76,4 +86,5 @@ export interface GatewayErrorShape extends Error {
   recoverable: boolean
   requiresEngineer: boolean
   missingDependency: string | null
+  requestId?: string | null
 }

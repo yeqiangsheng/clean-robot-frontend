@@ -27,6 +27,9 @@ import {
   publishWaterSequenceOn,
   publishWaterValve,
 } from '../ros/actuatorControlTopics'
+import { requestActuatorCommand } from './siteGatewayClient'
+
+const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
 
 export { ACTUATOR_CONTROL_TOPICS, ACTUATOR_LEVEL_MAX }
 
@@ -56,6 +59,11 @@ export type ActuatorGatewayCommand =
     }
 
 export async function runActuatorCommand(command: ActuatorGatewayCommand) {
+  if (!USE_MOCK_DATA) {
+    await requestActuatorCommand(command)
+    return
+  }
+
   switch (command.kind) {
     case 'waterPump':
       await publishWaterPump(command.level)

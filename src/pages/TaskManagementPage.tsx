@@ -1,19 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 
-import {
-  Alert,
-  Button,
-  Card,
-  Empty,
-  Form,
-  Space,
-  Spin,
-  Tag,
-  Typography,
-} from 'antd'
+import { Button, Card, Form, Input, Select, Space, Tag, Typography } from 'antd'
 import { PlusOutlined, ReloadOutlined, UnorderedListOutlined } from '@ant-design/icons'
 
 import { manageTask } from '../api/gateway/robotGateway'
+import { AppEmptyState } from '../components/feedback/AppEmptyState'
+import { AppFeedbackBanner } from '../components/feedback/AppFeedbackBanner'
+import { AppLoadingState } from '../components/feedback/AppLoadingState'
 import { LiveCommandContextCard } from '../components/runtime/LiveCommandContextCard'
 import { RosbridgeEndpointControl } from '../components/ros/RosbridgeEndpointControl'
 import { TaskManagementDetail } from '../features/task-management/TaskManagementDetail'
@@ -36,8 +29,8 @@ import { useProfileCatalog } from '../hooks/useProfileCatalog'
 import { useRosConnection } from '../hooks/useRosConnection'
 import { useExecutionSessionStore } from '../stores/executionSessionStore'
 import type { TaskDraftInput } from '../types/task'
-import { formatProfileDisplayName } from '../utils/profileCatalog'
 import { formatNumber } from '../utils/geometry'
+import { formatProfileDisplayName } from '../utils/profileCatalog'
 import './TaskManagementPage.css'
 
 type EditorMode = 'idle' | 'create' | 'edit'
@@ -49,20 +42,24 @@ function getConnectionTag(status: string) {
     case 'connecting':
       return { color: 'processing', label: '连接中' }
     case 'error':
-      return { color: 'error', label: '异常' }
+      return { color: 'error', label: '连接异常' }
     case 'mock':
       return { color: 'purple', label: 'Mock 数据' }
     case 'closed':
-      return { color: 'warning', label: '已断开' }
+      return { color: 'warning', label: '连接关闭' }
     default:
-      return { color: 'default', label: '空闲' }
+      return { color: 'default', label: '未连接' }
   }
 }
 
 export function TaskManagementPage() {
-  const { snapshot, defaultUrl, quickUrls, connect } = useRosConnection()
+  const { snapshot, defaultUrl, connect } = useRosConnection()
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null)
   const [editorMode, setEditorMode] = useState<EditorMode>('idle')
+  const [taskSearchText, setTaskSearchText] = useState('')
+  const [taskSortMode, setTaskSortMode] = useState<'enabled-first' | 'name-asc' | 'id-desc'>(
+    'enabled-first',
+  )
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [form] = Form.useForm<TaskDraftInput>()
@@ -136,7 +133,7 @@ export function TaskManagementPage() {
     return visibleEntries.map((entry) => ({
       label: [
         getMapReferenceLabel(entry),
-        entry.isActive ? '当前地图' : '',
+        entry.isActive ? '当前活动地图' : '',
         !entry.enabled ? '已禁用' : '',
       ]
         .filter(Boolean)
@@ -154,7 +151,7 @@ export function TaskManagementPage() {
     const parts = [getZoneReferenceLabel(selectedZoneInForm)]
 
     if (selectedZoneInForm.planProfileName) {
-      parts.push(`规划=${selectedZoneInForm.planProfileName}`)
+      parts.push(`规划档位=${selectedZoneInForm.planProfileName}`)
     }
 
     if (selectedZoneInForm.estimatedLengthM !== null) {
@@ -175,6 +172,40 @@ export function TaskManagementPage() {
   }, [selectedZoneInForm])
 
   const metadataEntries = getTaskMetadataEntries(selectedTaskDetail)
+  const visibleTasks = useMemo(() => {
+    const normalizedQuery = taskSearchText.trim().toLowerCase()
+    const filteredTasks = (tasksQuery.data ?? []).filter((task) => {
+      if (!normalizedQuery) {
+        return true
+      }
+
+      return [
+        task.name,
+        String(task.id),
+        task.mapName,
+        task.zoneId,
+        task.planProfileName,
+        task.sysProfileName,
+      ].some((value) => value.toLowerCase().includes(normalizedQuery))
+    })
+
+    return [...filteredTasks].sort((left, right) => {
+      if (taskSortMode === 'enabled-first' && left.enabled !== right.enabled) {
+        return left.enabled ? -1 : 1
+      }
+
+      if (taskSortMode === 'id-desc') {
+        return right.id - left.id
+      }
+
+      return left.name.localeCompare(right.name, 'zh-CN')
+    })
+  }, [taskSearchText, taskSortMode, tasksQuery.data])
+  const selectedTaskHiddenByFilter = Boolean(
+    selectedTask &&
+      taskSearchText.trim() &&
+      !visibleTasks.some((task) => task.id === selectedTask.id),
+  )
 
   const renderProfileValue = (profileName: string, kind: 'plan' | 'sys') => {
     if (!profileName.trim()) {
@@ -264,7 +295,7 @@ export function TaskManagementPage() {
 
   const handleStartEdit = () => {
     if (!selectedTaskDetail) {
-      setActionError('请先选择任务再编辑。')
+      setActionError('请先选择要编辑的任务。')
       return
     }
 
@@ -319,7 +350,7 @@ export function TaskManagementPage() {
         return
       }
 
-      setActionError(error instanceof Error ? error.message : '任务保存失败。')
+      setActionError(error instanceof Error ? error.message : '任务操作失败。')
     } finally {
       setIsSubmitting(false)
     }
@@ -356,86 +387,80 @@ export function TaskManagementPage() {
         <div>
           <Typography.Title level={2}>任务管理</Typography.Title>
           <Typography.Paragraph>
-            这是试点现场的任务 CRUD 页面，底层接入 `/database_server/clean_task_service`。
+            任务 CRUD 统一通过 `/database_server/app/clean_task_service`。
           </Typography.Paragraph>
         </div>
         <Space size="middle" wrap>
-          <Tag color="gold">任务配置</Tag>
+          <Tag color="gold">任务站点页</Tag>
           <Tag color={connectionTag.color}>{connectionTag.label}</Tag>
           <RosbridgeEndpointControl
             snapshot={snapshot}
             defaultUrl={defaultUrl}
-            quickUrls={quickUrls}
             onConnect={handleReconnect}
           />
         </Space>
       </header>
 
       {snapshot.status === 'error' && snapshot.lastError ? (
-        <Alert
-          showIcon
-          type="error"
-          title="rosbridge 连接失败"
+        <AppFeedbackBanner
+          tone="error"
+          title="ROS 连接异常"
           description={snapshot.lastError}
           className="task-banner"
         />
       ) : null}
 
       {snapshot.status === 'mock' ? (
-        <Alert
-          showIcon
-          type="info"
-          title="当前为 Mock 模式"
-          description="如需连接真实后端，请在 `.env.development` 中设置 `VITE_USE_MOCK_DATA=false`。"
+        <AppFeedbackBanner
+          tone="info"
+          title="当前正在使用 Mock 数据"
+          description="如果需要接入真实后端，请在 `.env.development` 中设置 `VITE_USE_MOCK_DATA=false`。"
           className="task-banner"
         />
       ) : null}
 
       {tasksQuery.error instanceof Error ? (
-        <Alert
-          showIcon
-          type="error"
+        <AppFeedbackBanner
+          tone="error"
           title="任务列表加载失败"
           description={tasksQuery.error.message}
+          actionLabel="重试"
+          onAction={() => void refetchTaskData()}
           className="task-banner"
         />
       ) : null}
 
       {actionError ? (
-        <Alert
-          showIcon
-          type="warning"
-          title="任务操作反馈"
+        <AppFeedbackBanner
+          tone="warning"
+          title="任务操作未完成"
           description={actionError}
           className="task-banner"
         />
       ) : null}
 
       {editorMode !== 'idle' && profileCatalogError ? (
-        <Alert
-          showIcon
-          type="warning"
-          title="档位目录部分不可用"
+        <AppFeedbackBanner
+          tone="warning"
+          title="档位目录加载失败"
           description={profileCatalogError}
           className="task-banner"
         />
       ) : null}
 
       {editorMode !== 'idle' && editorZoneCatalog.error ? (
-        <Alert
-          showIcon
-          type="warning"
-          title="区域目录不可用"
+        <AppFeedbackBanner
+          tone="warning"
+          title="区域目录加载失败"
           description={editorZoneCatalog.error.message}
           className="task-banner"
         />
       ) : null}
 
       {editorMode !== 'idle' && mapCatalog.error ? (
-        <Alert
-          showIcon
-          type="warning"
-          title="地图目录不可用"
+        <AppFeedbackBanner
+          tone="warning"
+          title="地图目录加载失败"
           description={mapCatalog.error.message}
           className="task-banner"
         />
@@ -457,14 +482,34 @@ export function TaskManagementPage() {
               </Space>
             }
           >
+            <div className="task-list-toolbar">
+              <Input.Search
+                allowClear
+                placeholder="搜索任务名、task_id、地图或 zone"
+                value={taskSearchText}
+                onChange={(event) => setTaskSearchText(event.target.value)}
+              />
+              <Select
+                value={taskSortMode}
+                options={[
+                  { label: '启用优先', value: 'enabled-first' },
+                  { label: '名称排序', value: 'name-asc' },
+                  { label: '最新 task_id', value: 'id-desc' },
+                ]}
+                onChange={(value) => setTaskSortMode(value)}
+              />
+            </div>
+
+            <Typography.Paragraph className="task-list-summary">
+              当前显示 {visibleTasks.length} / {tasksQuery.data?.length ?? 0} 条任务
+              {selectedTaskHiddenByFilter ? '，已选任务被当前筛选暂时隐藏。' : '。'}
+            </Typography.Paragraph>
+
             {tasksQuery.isLoading ? (
-              <div className="task-loading">
-                <Spin />
-                <Typography.Text>正在加载任务列表...</Typography.Text>
-              </div>
-            ) : tasksQuery.data && tasksQuery.data.length > 0 ? (
+              <AppLoadingState message="正在加载任务列表..." className="task-loading" />
+            ) : visibleTasks.length > 0 ? (
               <div className="task-list">
-                {tasksQuery.data.map((task) => (
+                {visibleTasks.map((task) => (
                   <button
                     key={task.id}
                     type="button"
@@ -495,7 +540,16 @@ export function TaskManagementPage() {
                 ))}
               </div>
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未返回任何任务。" />
+              <AppEmptyState
+                title={taskSearchText.trim() ? '没有匹配的任务' : '暂无任务'}
+                description={
+                  taskSearchText.trim()
+                    ? '当前筛选条件下没有结果，可以清空搜索词后再试。'
+                    : '当前还没有可显示的任务记录。'
+                }
+                actionLabel={taskSearchText.trim() ? '清空筛选' : undefined}
+                onAction={taskSearchText.trim() ? () => setTaskSearchText('') : undefined}
+              />
             )}
           </Card>
         </aside>
@@ -542,16 +596,16 @@ export function TaskManagementPage() {
           />
 
           <Card
-            title="当前范围"
+            title="本页范围"
             className="task-card"
             extra={<UnorderedListOutlined />}
           >
             <ul className="task-scope-list">
               {[
                 '任务列表查询',
-                '任务详情查询',
+                '任务详情查看',
                 '任务创建',
-                '任务更新',
+                '任务修改',
                 '任务删除',
               ].map((item) => (
                 <li key={item}>{item}</li>

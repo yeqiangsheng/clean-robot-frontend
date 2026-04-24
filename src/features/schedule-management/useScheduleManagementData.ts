@@ -3,13 +3,21 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { manageSchedule, manageTask } from '../../api/gateway/robotGateway'
+import { getTaskListQueryKey } from '../task-management/taskQueryKeys'
 import type { RosConnectionSnapshot } from '../../types/ros'
+
+function isScheduleNotFoundError(error: unknown) {
+  return (
+    error instanceof Error &&
+    error.message.trim().toLowerCase().includes('schedule not found')
+  )
+}
 
 export function useScheduleManagementData(
   snapshot: RosConnectionSnapshot,
   selectedScheduleId: string | null,
 ) {
-  const servicesReady = snapshot.isConnected || snapshot.status === 'mock'
+  const servicesReady = snapshot.status !== 'connecting'
 
   const schedulesQuery = useQuery({
     queryKey: ['schedule-management', 'schedules', snapshot.url, snapshot.sessionId],
@@ -20,7 +28,7 @@ export function useScheduleManagementData(
   })
 
   const tasksQuery = useQuery({
-    queryKey: ['schedule-management', 'tasks', snapshot.url, snapshot.sessionId],
+    queryKey: getTaskListQueryKey(snapshot),
     queryFn: () => manageTask({ action: 'list' }),
     enabled: servicesReady,
     retry: false,
@@ -58,12 +66,16 @@ export function useScheduleManagementData(
     staleTime: 15_000,
   })
 
-  const selectedScheduleDetail = detailQuery.data ?? selectedSchedule
+  const detailNotFound = isScheduleNotFoundError(detailQuery.error)
+  const selectedScheduleDetail = detailNotFound
+    ? null
+    : detailQuery.data ?? selectedSchedule
 
-  const refetchScheduleData = async () => {
+  const refetchScheduleData = async (options: { includeDetail?: boolean } = {}) => {
+    const includeDetail = options.includeDetail !== false
     await Promise.all([schedulesQuery.refetch(), tasksQuery.refetch()])
 
-    if (selectedScheduleId !== null) {
+    if (includeDetail && selectedScheduleId !== null) {
       await detailQuery.refetch()
     }
   }
@@ -76,6 +88,7 @@ export function useScheduleManagementData(
     selectedSchedule,
     selectedScheduleDetail,
     selectedTaskForDetail,
+    detailNotFound,
     refetchScheduleData,
   }
 }

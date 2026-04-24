@@ -4,7 +4,6 @@ import {
   Card,
   Checkbox,
   Descriptions,
-  Empty,
   Form,
   Input,
   Select,
@@ -15,6 +14,7 @@ import {
 } from 'antd'
 import { CheckCircleOutlined, ClockCircleOutlined, PlusOutlined } from '@ant-design/icons'
 
+import { AppEmptyState } from '../../components/feedback/AppEmptyState'
 import type { ScheduleDraftInput } from '../../types/schedule'
 import type { TaskEntity } from '../../types/task'
 import {
@@ -63,10 +63,7 @@ export function ScheduleManagementEditor({
       }
     >
       {editorMode === 'idle' ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="可新建调度，或选择已有调度进入编辑。"
-        />
+        <AppEmptyState description="可新建调度，或选择已有调度进入编辑。" />
       ) : (
         <Form<ScheduleDraftInput> form={form} layout="vertical" className="schedule-form">
           <Form.Item
@@ -185,7 +182,9 @@ export function ScheduleManagementEditor({
                 <Descriptions.Item label="区域">{selectedTask.zoneId || '--'}</Descriptions.Item>
                 <Descriptions.Item label="规划档位">{planProfileLabel}</Descriptions.Item>
                 <Descriptions.Item label="系统档位">{sysProfileLabel}</Descriptions.Item>
-                <Descriptions.Item label="清洁模式">{selectedTask.cleanMode || '--'}</Descriptions.Item>
+                <Descriptions.Item label="清洁模式">
+                  {selectedTask.cleanMode || '--'}
+                </Descriptions.Item>
                 <Descriptions.Item label="结束后行为">
                   {formatReturnToDock(selectedTask.returnToDockOnFinish)}
                 </Descriptions.Item>

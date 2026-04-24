@@ -10,9 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+release/
 .tmp/
 .tmp-*
 test-results/
+playwright-report/
 *.local
 .env.*
 !.env.example

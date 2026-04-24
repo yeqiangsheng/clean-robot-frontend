@@ -1,4 +1,6 @@
 import { getRosConnectionManager } from './client'
+import { setRosDebugEvent } from './debug'
+import { TASK_SERVICE } from './serviceNames'
 
 import type { TaskDraftInput, TaskEntity } from '../../types/task'
 import type { RosServiceRequest } from '../../types/ros'
@@ -9,8 +11,9 @@ type JsonRecord = Record<string, unknown>
 
 const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
 
-const TASK_SERVICE_NAME = '/database_server/clean_task_service'
-const TASK_SERVICE_TYPE = 'my_msg_srv/OperateTask'
+const TASK_SERVICE_TYPE = TASK_SERVICE.serviceType
+const TASK_CANONICAL_SERVICE_NAME = TASK_SERVICE.canonicalName
+const TASK_DEPRECATED_FALLBACK_SERVICE_NAME = TASK_SERVICE.deprecatedFallbackName
 const TASK_OPERATIONS = {
   get: 0,
   add: 1,
@@ -212,11 +215,35 @@ function createServiceError(payload: unknown, fallbackMessage: string) {
 
 async function callRosService(payload: RosServiceRequest) {
   const client = getRosConnectionManager()
-  return client.callService<RosServiceRequest, JsonRecord>({
-    serviceName: TASK_SERVICE_NAME,
-    serviceType: TASK_SERVICE_TYPE,
-    request: payload,
-  })
+
+  const callService = (serviceName: string) =>
+    client.callService<RosServiceRequest, JsonRecord>({
+      serviceName,
+      serviceType: TASK_SERVICE_TYPE,
+      request: payload,
+    })
+
+  try {
+    return await callService(TASK_CANONICAL_SERVICE_NAME)
+  } catch (canonicalError) {
+    setRosDebugEvent(`task:deprecated-fallback:${TASK_DEPRECATED_FALLBACK_SERVICE_NAME}`)
+
+    try {
+      return await callService(TASK_DEPRECATED_FALLBACK_SERVICE_NAME)
+    } catch (fallbackError) {
+      const fallbackMessage =
+        fallbackError instanceof Error
+          ? fallbackError.message
+          : `Deprecated fallback task service ${TASK_DEPRECATED_FALLBACK_SERVICE_NAME} failed.`
+      const normalizedFallbackError = new Error(fallbackMessage)
+
+      if (canonicalError instanceof Error && canonicalError.message.trim().length > 0) {
+        normalizedFallbackError.message = `${normalizedFallbackError.message} (canonical failure: ${canonicalError.message})`
+      }
+
+      throw normalizedFallbackError
+    }
+  }
 }
 
 function normalizeTaskEntity(record: JsonRecord, index: number): TaskEntity {

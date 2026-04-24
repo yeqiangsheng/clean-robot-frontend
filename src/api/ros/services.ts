@@ -1,6 +1,10 @@
 import { getRosConnectionManager } from './client'
 import { setRosDebugEvent } from './debug'
 import { fetchCurrentMapFromWorker } from './mapWorkerClient'
+import {
+  SITE_SERVICE_DEPRECATED_FALLBACKS as SERVICE_DEPRECATED_FALLBACKS,
+  SITE_SERVICE_NAMES as SERVICE_NAMES,
+} from './serviceNames'
 
 import type {
   AreaEntity,
@@ -23,19 +27,6 @@ type AreaKind = AreaEntity['kind']
 
 const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
 
-const SERVICE_NAMES = {
-  map: '/clean_robot_server/map_server',
-  alignment: '/database_server/map_alignment_service',
-  alignmentByPoints: '/database_server/map_alignment_by_points_service',
-  rectZonePreview: '/database_server/rect_zone_preview_service',
-  zone: '/database_server/coverage_zone_service',
-  zonePlanPath: '/database_server/zone_plan_path_service',
-  coveragePreview: '/database_server/coverage_preview_service',
-  coverageCommit: '/database_server/coverage_commit_service',
-  noGoArea: '/database_server/no_go_area_service',
-  virtualWall: '/database_server/virtual_wall_service',
-} as const
-
 const SERVICE_TYPES = {
   map: 'my_msg_srv/OperateMap',
   alignment: 'my_msg_srv/OperateMapAlignment',
@@ -43,8 +34,8 @@ const SERVICE_TYPES = {
   rectZonePreview: 'my_msg_srv/PreviewAlignedRectSelection',
   zone: 'my_msg_srv/OperateCoverageZone',
   zonePlanPath: 'my_msg_srv/GetZonePlanPath',
-  coveragePreview: 'my_msg_srv/PreviewCoverageRegion',
-  coverageCommit: 'my_msg_srv/CommitCoverageRegion',
+  coveragePreview: 'cleanrobot_site_msgs/PreviewCoverageRegion',
+  coverageCommit: 'cleanrobot_site_msgs/CommitCoverageRegion',
   noGoArea: 'my_msg_srv/OperateMapNoGoArea',
   virtualWall: 'my_msg_srv/OperateMapVirtualWall',
 } as const
@@ -513,12 +504,20 @@ function toOccupancyGrid(value: unknown): OccupancyGrid | null {
   const width = toNumber(pickValue(info, ['width']))
   const height = toNumber(pickValue(info, ['height']))
   const resolution = toNumber(pickValue(info, ['resolution']))
-  const data = Array.isArray(record.data)
-    ? record.data.map((cell) => toNumber(cell) ?? -1)
-    : []
+  const sourceData = Array.isArray(record.data) ? record.data : []
 
-  if (width === null || height === null || resolution === null || data.length === 0) {
+  if (
+    width === null ||
+    height === null ||
+    resolution === null ||
+    sourceData.length === 0
+  ) {
     return null
+  }
+
+  const data = new Int16Array(sourceData.length)
+  for (let index = 0; index < sourceData.length; index += 1) {
+    data[index] = toNumber(sourceData[index]) ?? -1
   }
 
   const originRecord = isRecord(pickValue(info, ['origin']))
@@ -791,7 +790,7 @@ function normalizeEntityList(payload: unknown, keys: string[]) {
   return isRecord(directMatch) ? [directMatch as JsonRecord] : []
 }
 
-function normalizeMap(payload: unknown): MapEntity | null {
+export function normalizeMapPayload(payload: unknown): MapEntity | null {
   const record = normalizeMapCandidate(payload)
 
   if (!record) {
@@ -895,7 +894,7 @@ function normalizeMap(payload: unknown): MapEntity | null {
   }
 }
 
-function normalizeAlignment(payload: unknown): MapAlignment | null {
+export function normalizeAlignment(payload: unknown): MapAlignment | null {
   const record = normalizeAlignmentCandidate(payload)
 
   if (!record) {
@@ -967,7 +966,7 @@ function normalizeAlignment(payload: unknown): MapAlignment | null {
   }
 }
 
-function normalizeRectZonePreview(payload: unknown): ZoneRectDraft | null {
+export function normalizeRectZonePreview(payload: unknown): ZoneRectDraft | null {
   const record = normalizeRectZonePreviewCandidate(payload)
 
   if (!record) {
@@ -1001,7 +1000,7 @@ function normalizeRectZonePreview(payload: unknown): ZoneRectDraft | null {
   }
 }
 
-function normalizeCoveragePreview(payload: unknown): ZoneDraftPreview | null {
+export function normalizeCoveragePreview(payload: unknown): ZoneDraftPreview | null {
   const record = normalizeCoveragePreviewCandidate(payload)
 
   if (!record) {
@@ -1031,7 +1030,7 @@ function normalizeCoveragePreview(payload: unknown): ZoneDraftPreview | null {
   }
 }
 
-function normalizeZonePlanPath(payload: unknown): ZonePlanPathResult | null {
+export function normalizeZonePlanPath(payload: unknown): ZonePlanPathResult | null {
   const record = normalizeZonePlanPathCandidate(payload)
 
   if (!record) {
@@ -1077,7 +1076,7 @@ function normalizeZonePlanPath(payload: unknown): ZonePlanPathResult | null {
   }
 }
 
-function normalizeCoverageCommit(payload: unknown): ZoneCommitResult | null {
+export function normalizeCoverageCommit(payload: unknown): ZoneCommitResult | null {
   const record = normalizeCoverageCommitCandidate(payload)
 
   if (!record) {
@@ -1101,7 +1100,7 @@ function normalizeCoverageCommit(payload: unknown): ZoneCommitResult | null {
   }
 }
 
-function normalizeConstraintEntity(
+export function normalizeConstraintEntity(
   payload: unknown,
   kind: Extract<AreaKind, 'noGoArea' | 'virtualWall'>,
 ) {
@@ -1142,7 +1141,7 @@ function getConstraintVersion(payload: unknown) {
   return isRecord(payload) ? pickString(payload, ['constraint_version']) : null
 }
 
-function buildNoGoAreaRequest(options: {
+export function buildNoGoAreaRequest(options: {
   map: MapEntity | null
   mapName?: string | null
   alignment: MapAlignment | null
@@ -1167,7 +1166,7 @@ function buildNoGoAreaRequest(options: {
   } satisfies RosServiceRequest
 }
 
-function buildVirtualWallRequest(options: {
+export function buildVirtualWallRequest(options: {
   map: MapEntity | null
   mapName?: string | null
   alignment: MapAlignment | null
@@ -1194,7 +1193,7 @@ function buildVirtualWallRequest(options: {
   } satisfies RosServiceRequest
 }
 
-function normalizeAreaEntity(record: JsonRecord, kind: AreaKind, index: number): AreaEntity {
+export function normalizeAreaEntity(record: JsonRecord, kind: AreaKind, index: number): AreaEntity {
   return {
     id:
       pickString(record, [
@@ -1253,7 +1252,7 @@ function getMapName(map: MapEntity | null) {
   return (map?.raw.map_name as string | undefined) ?? map?.name ?? ''
 }
 
-function resolveRequestedMapName(map: MapEntity | null, mapName?: string | null) {
+export function resolveRequestedMapName(map: MapEntity | null, mapName?: string | null) {
   return mapName?.trim() || getMapName(map)
 }
 
@@ -1265,15 +1264,48 @@ async function callRosService(request: {
   const client = getRosConnectionManager()
   setRosDebugEvent(`service:start:${request.serviceName}`)
 
-  const response = await client.callService<RosServiceRequest, JsonRecord>({
-    serviceName: request.serviceName,
-    serviceType: request.serviceType,
-    request: request.payload,
-    timeoutSeconds: 8,
-  })
+  const callService = (serviceName: string) =>
+    client.callService<RosServiceRequest, JsonRecord>({
+      serviceName,
+      serviceType: request.serviceType,
+      request: request.payload,
+      timeoutSeconds: 8,
+    })
 
-  setRosDebugEvent(`service:done:${request.serviceName}`)
-  return response
+  try {
+    const response = await callService(request.serviceName)
+    setRosDebugEvent(`service:done:${request.serviceName}`)
+    return response
+  } catch (canonicalError) {
+    const deprecatedFallbackServiceName =
+      SERVICE_DEPRECATED_FALLBACKS[
+        request.serviceName as keyof typeof SERVICE_DEPRECATED_FALLBACKS
+      ]
+
+    if (!deprecatedFallbackServiceName) {
+      throw canonicalError
+    }
+
+    setRosDebugEvent(`service:deprecated-fallback:${deprecatedFallbackServiceName}`)
+
+    try {
+      const response = await callService(deprecatedFallbackServiceName)
+      setRosDebugEvent(`service:done:${deprecatedFallbackServiceName}`)
+      return response
+    } catch (fallbackError) {
+      const fallbackMessage =
+        fallbackError instanceof Error
+          ? fallbackError.message
+          : `Deprecated fallback service ${deprecatedFallbackServiceName} failed.`
+      const normalizedFallbackError = new Error(fallbackMessage)
+
+      if (canonicalError instanceof Error && canonicalError.message.trim().length > 0) {
+        normalizedFallbackError.message = `${normalizedFallbackError.message} (canonical failure: ${canonicalError.message})`
+      }
+
+      throw normalizedFallbackError
+    }
+  }
 }
 
 const mockMap: MapEntity = {
@@ -1574,7 +1606,7 @@ async function fetchCurrentMapDirectly() {
     (isRecord(getPayload) ? getPayload : null)
 
   const mapRecord = fullMap ? { ...activeMap, ...fullMap } : activeMap
-  const normalized = normalizeMap(mapRecord)
+  const normalized = normalizeMapPayload(mapRecord)
 
   if (!normalized) {
     setRosDebugEvent(`map:normalize:error:${mapName}`)

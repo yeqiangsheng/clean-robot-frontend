@@ -1,5 +1,7 @@
-import { Alert, Button, Card, Descriptions, Empty, Input, InputNumber, Space, Switch, Typography } from 'antd'
+import { Button, Card, Descriptions, Input, InputNumber, Space, Switch, Typography } from 'antd'
 
+import { AppEmptyState } from '../feedback/AppEmptyState'
+import { AppFeedbackBanner } from '../feedback/AppFeedbackBanner'
 import type { ConstraintEditorMode, VirtualWallDraft } from '../../types/map-editor'
 import { formatNumber } from '../../utils/geometry'
 
@@ -49,9 +51,8 @@ export function VirtualWallEditorPanel({
       extra={<Typography.Text type="secondary">{isEditing ? '修改' : '新增'}</Typography.Text>}
     >
       {lastError ? (
-        <Alert
-          showIcon
-          type="error"
+        <AppFeedbackBanner
+          tone="error"
           title={isEditing ? '虚拟墙保存失败' : '虚拟墙新增失败'}
           description={lastError}
           className="zone-editor-alert"
@@ -59,8 +60,7 @@ export function VirtualWallEditorPanel({
       ) : null}
 
       {!draftWall ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        <AppEmptyState
           description={
             isEditing
               ? '正在加载所选虚拟墙的几何信息。'
@@ -70,18 +70,12 @@ export function VirtualWallEditorPanel({
       ) : (
         <>
           <Descriptions column={1} size="small" colon={false}>
-            {isEditing ? (
-              <Descriptions.Item label="虚拟墙 ID">{editingWallId ?? '--'}</Descriptions.Item>
-            ) : null}
-            <Descriptions.Item label="线段数">
-              {draftWall.displayPath.length}
-            </Descriptions.Item>
+            {isEditing ? <Descriptions.Item label="虚拟墙 ID">{editingWallId ?? '--'}</Descriptions.Item> : null}
+            <Descriptions.Item label="线段数">{draftWall.displayPath.length}</Descriptions.Item>
             <Descriptions.Item label="显示坐标系">
               {draftWall.displayFrame?.frameId ?? '--'}
             </Descriptions.Item>
-            <Descriptions.Item label="是否启用">
-              {enabled ? '是' : '否'}
-            </Descriptions.Item>
+            <Descriptions.Item label="是否启用">{enabled ? '是' : '否'}</Descriptions.Item>
             <Descriptions.Item label="缓冲距离">
               {formatNumber(bufferM ?? draftWall.bufferM, 3)}
             </Descriptions.Item>
@@ -128,7 +122,7 @@ export function VirtualWallEditorPanel({
           </Space>
 
           <Typography.Paragraph className="workbench-footnote zone-preview-footnote">
-            前端当前只编辑 `display_path` 和 `buffer_m`，最终写入后的墙体几何仍以后端保存结果为准。
+            前端当前只编辑 `display_path` 和 `buffer_m`，最终以后端保存后的墙体几何为准。
           </Typography.Paragraph>
         </>
       )}

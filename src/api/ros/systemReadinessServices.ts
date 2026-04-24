@@ -1,7 +1,15 @@
-import { getRosConnectionManager } from './client'
+import {
+  getDeprecatedReadQueryFallback,
+  SYSTEM_READINESS_QUERY_CONTRACT,
+  SYSTEM_READINESS_TOPIC_NAME,
+} from './queryContracts'
+export {
+  SYSTEM_READINESS_TOPIC_NAME,
+  SYSTEM_READINESS_TOPIC_TYPE,
+} from './queryContracts'
+import { callAppFirstReadQueryService } from './readQueryFallback'
 import { fetchRuntimeTopicMeta } from './runtimeServices'
 
-import type { RosServiceRequest } from '../../types/ros'
 import type {
   SystemReadiness,
   SystemReadinessCheck,
@@ -13,12 +21,17 @@ type JsonRecord = Record<string, unknown>
 const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
 
 export const SYSTEM_READINESS_SERVICE_NAME =
-  '/coverage_task_manager/get_system_readiness'
-export const SYSTEM_READINESS_SERVICE_TYPE = 'my_msg_srv/GetSystemReadiness'
-export const SYSTEM_READINESS_TOPIC_NAME =
-  '/coverage_task_manager/system_readiness'
-export const SYSTEM_READINESS_TOPIC_TYPE = 'my_msg_srv/SystemReadiness'
-export const SYSTEM_READINESS_STALE_AFTER_MS = 15_000
+  SYSTEM_READINESS_QUERY_CONTRACT.canonical.serviceName
+export const SYSTEM_READINESS_SERVICE_TYPE =
+  SYSTEM_READINESS_QUERY_CONTRACT.canonical.serviceType
+const SYSTEM_READINESS_DEPRECATED_FALLBACK =
+  getDeprecatedReadQueryFallback(SYSTEM_READINESS_QUERY_CONTRACT)
+export const SYSTEM_READINESS_LEGACY_SERVICE_NAME =
+  SYSTEM_READINESS_DEPRECATED_FALLBACK?.serviceName ??
+  SYSTEM_READINESS_QUERY_CONTRACT.canonical.serviceName
+export const SYSTEM_READINESS_LEGACY_SERVICE_TYPE =
+  SYSTEM_READINESS_DEPRECATED_FALLBACK?.serviceType ??
+  SYSTEM_READINESS_QUERY_CONTRACT.canonical.serviceType
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -147,13 +160,31 @@ export function normalizeSystemReadiness(value: unknown): SystemReadiness | null
   }
 }
 
-async function callSystemReadinessService(request: RosServiceRequest) {
-  const client = getRosConnectionManager()
-  return client.callService<RosServiceRequest, JsonRecord>({
-    serviceName: SYSTEM_READINESS_SERVICE_NAME,
-    serviceType: SYSTEM_READINESS_SERVICE_TYPE,
-    request,
-  })
+function normalizeSystemReadinessServiceResult(payload: JsonRecord) {
+  const success = toBoolean(payload.success)
+  const message = toString(payload.message)
+  const readinessSource = 'readiness' in payload ? payload.readiness : payload
+  const readiness = normalizeSystemReadiness(readinessSource)
+
+  if (success === false) {
+    return {
+      success,
+      message,
+      readiness,
+      raw: payload,
+    } satisfies SystemReadinessServiceResult
+  }
+
+  if (!readiness) {
+    return null
+  }
+
+  return {
+    success: success ?? true,
+    message,
+    readiness,
+    raw: payload,
+  } satisfies SystemReadinessServiceResult
 }
 
 export async function fetchSystemReadiness(taskId: number) {
@@ -205,17 +236,36 @@ export async function fetchSystemReadiness(taskId: number) {
     } satisfies SystemReadinessServiceResult
   }
 
-  const payload = await callSystemReadinessService({
-    task_id: Math.max(0, Math.round(taskId)),
-    refresh_map_identity: true,
-  })
+  const normalizedTaskId = Math.max(0, Math.round(taskId))
+  return callAppFirstReadQueryService({
+    contract: SYSTEM_READINESS_QUERY_CONTRACT,
+    request: {
+      task_id: normalizedTaskId,
+      refresh_map_identity: normalizedTaskId > 0,
+    },
+    evaluateAppResponse: (payload) => {
+      const normalized = normalizeSystemReadinessServiceResult(payload)
 
-  return {
-    success: toBoolean(payload.success) ?? false,
-    message: toString(payload.message),
-    readiness: normalizeSystemReadiness(payload.readiness),
-    raw: payload,
-  } satisfies SystemReadinessServiceResult
+      return normalized
+        ? {
+            kind: 'success',
+            value: normalized,
+          }
+        : {
+            kind: 'fallback',
+            reason: 'App readiness query returned no usable readiness payload.',
+          }
+    },
+    mapLegacyResponse: (payload) => {
+      const normalized = normalizeSystemReadinessServiceResult(payload)
+
+      if (!normalized) {
+        throw new Error('Legacy readiness query returned no usable readiness payload.')
+      }
+
+      return normalized
+    },
+  })
 }
 
 export async function fetchSystemReadinessTopicMeta() {

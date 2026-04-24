@@ -1,4 +1,6 @@
 import { getRosConnectionManager } from './client'
+import { setRosDebugEvent } from './debug'
+import { SCHEDULE_SERVICE } from './serviceNames'
 
 import type { TaskEntity } from '../../types/task'
 import type { ScheduleDraftInput, ScheduleEntity } from '../../types/schedule'
@@ -10,8 +12,10 @@ type JsonRecord = Record<string, unknown>
 
 const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
 
-const SCHEDULE_SERVICE_NAME = '/database_server/clean_schedule_service'
-const SCHEDULE_SERVICE_TYPE = 'my_msg_srv/OperateSchedule'
+const SCHEDULE_SERVICE_TYPE = SCHEDULE_SERVICE.serviceType
+const SCHEDULE_CANONICAL_SERVICE_NAME = SCHEDULE_SERVICE.canonicalName
+const SCHEDULE_DEPRECATED_FALLBACK_SERVICE_NAME =
+  SCHEDULE_SERVICE.deprecatedFallbackName
 const SCHEDULE_OPERATIONS = {
   get: 0,
   add: 1,
@@ -213,11 +217,37 @@ function createServiceError(payload: unknown, fallbackMessage: string) {
 
 async function callRosService(payload: RosServiceRequest) {
   const client = getRosConnectionManager()
-  return client.callService<RosServiceRequest, JsonRecord>({
-    serviceName: SCHEDULE_SERVICE_NAME,
-    serviceType: SCHEDULE_SERVICE_TYPE,
-    request: payload,
-  })
+
+  const callService = (serviceName: string) =>
+    client.callService<RosServiceRequest, JsonRecord>({
+      serviceName,
+      serviceType: SCHEDULE_SERVICE_TYPE,
+      request: payload,
+    })
+
+  try {
+    return await callService(SCHEDULE_CANONICAL_SERVICE_NAME)
+  } catch (canonicalError) {
+    setRosDebugEvent(
+      `schedule:deprecated-fallback:${SCHEDULE_DEPRECATED_FALLBACK_SERVICE_NAME}`,
+    )
+
+    try {
+      return await callService(SCHEDULE_DEPRECATED_FALLBACK_SERVICE_NAME)
+    } catch (fallbackError) {
+      const fallbackMessage =
+        fallbackError instanceof Error
+          ? fallbackError.message
+          : `Deprecated fallback schedule service ${SCHEDULE_DEPRECATED_FALLBACK_SERVICE_NAME} failed.`
+      const normalizedFallbackError = new Error(fallbackMessage)
+
+      if (canonicalError instanceof Error && canonicalError.message.trim().length > 0) {
+        normalizedFallbackError.message = `${normalizedFallbackError.message} (canonical failure: ${canonicalError.message})`
+      }
+
+      throw normalizedFallbackError
+    }
+  }
 }
 
 function normalizeScheduleEntity(record: JsonRecord, index: number): ScheduleEntity {
@@ -563,6 +593,7 @@ export async function deleteCleanSchedule(scheduleId: string, taskId = 0) {
   }
 
   return {
+    message: isRecord(payload) ? getResponseMessage(payload) ?? '' : '',
     raw: isRecord(payload) ? payload : {},
   }
 }

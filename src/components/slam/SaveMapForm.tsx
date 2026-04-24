@@ -5,11 +5,9 @@ import { Button, Card, Form, Input, Space, Switch, Typography } from 'antd'
 import { buildTimestampedMapName } from '../../utils/slam'
 
 type SaveMapFormValues = {
-  saveMapName: string
-  includeUnfinishedSubmaps: boolean
-  setActiveOnSave: boolean
-  switchToLocalizationAfterSave: boolean
-  relocalizeAfterSwitch: boolean
+  mapName: string
+  setActive: boolean
+  description: string
 }
 
 type SaveMapFormProps = {
@@ -32,11 +30,11 @@ export function SaveMapForm({
   )
 
   useEffect(() => {
-    const current = form.getFieldValue('saveMapName')
+    const current = form.getFieldValue('mapName')
 
     if (!current || !String(current).trim()) {
       form.setFieldsValue({
-        saveMapName: generatedSaveMapName,
+        mapName: generatedSaveMapName,
       })
     }
   }, [form, generatedSaveMapName])
@@ -44,59 +42,38 @@ export function SaveMapForm({
   return (
     <Card title="保存地图" className="slam-card">
       <Typography.Paragraph className="slam-card-copy">
-        这里会调用 `save_map`。`save_map_name` 是输出地图名，建议使用唯一值，避免和已有资源冲突。默认会把新地图设为当前地图，但不会自动切回定位模式。
+        通过 `/clean_robot_server/app/submit_slam_command(save_mapping)` 提交保存请求，
+        提交字段包括 `map_name / set_active / description`。
       </Typography.Paragraph>
 
       <Form<SaveMapFormValues>
         form={form}
         layout="vertical"
         initialValues={{
-          saveMapName: generatedSaveMapName,
-          includeUnfinishedSubmaps: false,
-          setActiveOnSave: true,
-          switchToLocalizationAfterSave: false,
-          relocalizeAfterSwitch: false,
+          mapName: generatedSaveMapName,
+          setActive: true,
+          description: '',
         }}
         onFinish={onSubmit}
       >
         <Form.Item
-          name="saveMapName"
-          label="保存地图名称"
-          rules={[{ required: true, message: '请输入 save_map_name。' }]}
+          name="mapName"
+          label="地图名称"
+          rules={[{ required: true, message: '请输入要保存的 map_name' }]}
         >
           <Input disabled={disabled} placeholder={generatedSaveMapName} />
         </Form.Item>
 
         <Form.Item
-          name="includeUnfinishedSubmaps"
-          label="包含未完成子图"
+          name="setActive"
+          label="保存成功后切换为当前活动地图"
           valuePropName="checked"
         >
           <Switch disabled={disabled} />
         </Form.Item>
 
-        <Form.Item
-          name="setActiveOnSave"
-          label="保存后设为当前地图"
-          valuePropName="checked"
-        >
-          <Switch disabled={disabled} />
-        </Form.Item>
-
-        <Form.Item
-          name="switchToLocalizationAfterSave"
-          label="保存后切回定位模式"
-          valuePropName="checked"
-        >
-          <Switch disabled={disabled} />
-        </Form.Item>
-
-        <Form.Item
-          name="relocalizeAfterSwitch"
-          label="切回后重新定位"
-          valuePropName="checked"
-        >
-          <Switch disabled={disabled} />
+        <Form.Item name="description" label="说明">
+          <Input disabled={disabled} placeholder="可选，用于记录本次保存原因" />
         </Form.Item>
 
         <Space wrap>

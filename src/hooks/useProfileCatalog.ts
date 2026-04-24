@@ -33,7 +33,7 @@ export function useProfileCatalog({
   selectedProfileNames = [],
 }: UseProfileCatalogOptions) {
   const { snapshot } = useRosConnection()
-  const servicesReady = snapshot.isConnected || snapshot.status === 'mock'
+  const servicesReady = snapshot.status !== 'connecting'
   const normalizedMapName = mapName?.trim() ?? ''
   const normalizedSelected = useMemo(
     () => normalizeSelectedProfileNames(selectedProfileNames),

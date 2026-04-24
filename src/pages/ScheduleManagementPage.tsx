@@ -1,19 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 
 import {
-  Alert,
   Button,
   Card,
-  Empty,
   Form,
+  Input,
+  Select,
   Space,
-  Spin,
   Tag,
   Typography,
 } from 'antd'
 import { PlusOutlined, ReloadOutlined, UnorderedListOutlined } from '@ant-design/icons'
 
 import { manageSchedule } from '../api/gateway/robotGateway'
+import { AppEmptyState } from '../components/feedback/AppEmptyState'
+import { AppFeedbackBanner } from '../components/feedback/AppFeedbackBanner'
+import { AppLoadingState } from '../components/feedback/AppLoadingState'
 import { RosbridgeEndpointControl } from '../components/ros/RosbridgeEndpointControl'
 import { ScheduleManagementDetail } from '../features/schedule-management/ScheduleManagementDetail'
 import { ScheduleManagementEditor } from '../features/schedule-management/ScheduleManagementEditor'
@@ -38,22 +40,37 @@ function getConnectionTag(status: string) {
     case 'connecting':
       return { color: 'processing', label: '连接中' }
     case 'error':
-      return { color: 'error', label: '异常' }
+      return { color: 'error', label: '连接异常' }
     case 'mock':
       return { color: 'purple', label: 'Mock 数据' }
     case 'closed':
-      return { color: 'warning', label: '已断开' }
+      return { color: 'warning', label: '连接关闭' }
     default:
-      return { color: 'default', label: '空闲' }
+      return { color: 'default', label: '未连接' }
   }
 }
 
+function getResultMessage(result: unknown) {
+  if (typeof result !== 'object' || result === null || !('message' in result)) {
+    return ''
+  }
+
+  const message = (result as { message?: unknown }).message
+  return typeof message === 'string' ? message.trim() : ''
+}
+
 export function ScheduleManagementPage() {
-  const { snapshot, defaultUrl, quickUrls, connect } = useRosConnection()
+  const { snapshot, defaultUrl, connect } = useRosConnection()
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null)
   const [editorMode, setEditorMode] = useState<EditorMode>('idle')
+  const [scheduleSearchText, setScheduleSearchText] = useState('')
+  const [scheduleSortMode, setScheduleSortMode] = useState<
+    'enabled-first' | 'task-name' | 'recent-fire'
+  >('enabled-first')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null)
+  const [autoSelectFirstSchedule, setAutoSelectFirstSchedule] = useState(true)
   const [form] = Form.useForm<ScheduleDraftInput>()
 
   const connectionTag = getConnectionTag(snapshot.status)
@@ -64,6 +81,7 @@ export function ScheduleManagementPage() {
     selectedSchedule,
     selectedScheduleDetail,
     selectedTaskForDetail,
+    detailNotFound,
     refetchScheduleData,
   } = useScheduleManagementData(snapshot, selectedScheduleId)
 
@@ -94,6 +112,41 @@ export function ScheduleManagementPage() {
   })
 
   const metadataEntries = getScheduleMetadataEntries(selectedScheduleDetail)
+  const visibleSchedules = useMemo(() => {
+    const normalizedQuery = scheduleSearchText.trim().toLowerCase()
+    const filteredSchedules = (schedulesQuery.data ?? []).filter((schedule) => {
+      if (!normalizedQuery) {
+        return true
+      }
+
+      return [
+        schedule.id,
+        schedule.taskName,
+        String(schedule.taskId),
+        schedule.type,
+        schedule.time,
+        schedule.timezone,
+        schedule.mapName,
+      ].some((value) => value.toLowerCase().includes(normalizedQuery))
+    })
+
+    return [...filteredSchedules].sort((left, right) => {
+      if (scheduleSortMode === 'enabled-first' && left.enabled !== right.enabled) {
+        return left.enabled ? -1 : 1
+      }
+
+      if (scheduleSortMode === 'recent-fire') {
+        return (right.lastFireTs ?? 0) - (left.lastFireTs ?? 0)
+      }
+
+      return (left.taskName || left.id).localeCompare(right.taskName || right.id, 'zh-CN')
+    })
+  }, [scheduleSearchText, scheduleSortMode, schedulesQuery.data])
+  const selectedScheduleHiddenByFilter = Boolean(
+    selectedSchedule &&
+      scheduleSearchText.trim() &&
+      !visibleSchedules.some((schedule) => schedule.id === selectedSchedule.id),
+  )
 
   const renderProfileValue = (profileName: string, kind: 'plan' | 'sys') => {
     if (!profileName.trim()) {
@@ -107,7 +160,7 @@ export function ScheduleManagementPage() {
   useEffect(() => {
     const firstSchedule = schedulesQuery.data?.[0] ?? null
 
-    if (selectedScheduleId === null && firstSchedule) {
+    if (selectedScheduleId === null && firstSchedule && autoSelectFirstSchedule) {
       setSelectedScheduleId(firstSchedule.id)
       return
     }
@@ -117,9 +170,21 @@ export function ScheduleManagementPage() {
       schedulesQuery.data &&
       !schedulesQuery.data.some((schedule) => schedule.id === selectedScheduleId)
     ) {
-      setSelectedScheduleId(firstSchedule?.id ?? null)
+      setAutoSelectFirstSchedule(false)
+      setSelectedScheduleId(null)
     }
-  }, [selectedScheduleId, schedulesQuery.data])
+  }, [autoSelectFirstSchedule, selectedScheduleId, schedulesQuery.data])
+
+  useEffect(() => {
+    if (!detailNotFound) {
+      return
+    }
+
+    setAutoSelectFirstSchedule(false)
+    setSelectedScheduleId(null)
+    setEditorMode('idle')
+    form.resetFields()
+  }, [detailNotFound, form])
 
   const handleReconnect = async (url?: string) => {
     await connect((url ?? snapshot.url) || defaultUrl)
@@ -128,6 +193,7 @@ export function ScheduleManagementPage() {
 
   const handleStartCreate = () => {
     setActionError(null)
+    setActionSuccess(null)
     form.setFieldsValue(
       buildCreateScheduleDefaults(selectedTaskForDetail ?? tasksQuery.data?.[0] ?? null),
     )
@@ -136,11 +202,12 @@ export function ScheduleManagementPage() {
 
   const handleStartEdit = () => {
     if (!selectedScheduleDetail) {
-      setActionError('请先选择调度再编辑。')
+      setActionError('请先选择要编辑的调度。')
       return
     }
 
     setActionError(null)
+    setActionSuccess(null)
     form.setFieldsValue(buildEditScheduleDefaults(selectedScheduleDetail))
     setEditorMode('edit')
   }
@@ -148,6 +215,7 @@ export function ScheduleManagementPage() {
   const handleCancelEdit = () => {
     setEditorMode('idle')
     setActionError(null)
+    setActionSuccess(null)
     form.resetFields()
   }
 
@@ -158,10 +226,11 @@ export function ScheduleManagementPage() {
         tasksQuery.data?.find((task) => task.id === values.taskId) ?? selectedTaskInForm
 
       if (!selectedTask) {
-        throw new Error('保存前请选择有效的任务。')
+        throw new Error('请选择一个有效任务。')
       }
 
       setActionError(null)
+      setActionSuccess(null)
       setIsSubmitting(true)
 
       if (editorMode === 'edit') {
@@ -176,7 +245,9 @@ export function ScheduleManagementPage() {
           task: selectedTask,
         })
         await refetchScheduleData()
+        setAutoSelectFirstSchedule(true)
         setSelectedScheduleId(result.schedule.id)
+        setActionSuccess(`调度 ${result.schedule.id} 已保存。`)
       } else {
         const result = await manageSchedule({
           action: 'create',
@@ -184,7 +255,9 @@ export function ScheduleManagementPage() {
           task: selectedTask,
         })
         await refetchScheduleData()
+        setAutoSelectFirstSchedule(true)
         setSelectedScheduleId(result.schedule.id)
+        setActionSuccess(`调度 ${result.schedule.id} 已创建。`)
       }
 
       setEditorMode('idle')
@@ -194,7 +267,8 @@ export function ScheduleManagementPage() {
         return
       }
 
-      setActionError(error instanceof Error ? error.message : '调度保存失败。')
+      setActionSuccess(null)
+      setActionError(error instanceof Error ? error.message : '调度操作失败。')
     } finally {
       setIsSubmitting(false)
     }
@@ -206,17 +280,24 @@ export function ScheduleManagementPage() {
     }
 
     try {
+      const deletedScheduleId = selectedScheduleDetail.id
       setActionError(null)
+      setActionSuccess(null)
       setIsSubmitting(true)
-      await manageSchedule({
+      const result = await manageSchedule({
         action: 'delete',
-        scheduleId: selectedScheduleDetail.id,
+        scheduleId: deletedScheduleId,
         taskId: selectedScheduleDetail.taskId,
       })
-      await refetchScheduleData()
+      const backendMessage = getResultMessage(result) || 'deleted'
+      setAutoSelectFirstSchedule(false)
+      setSelectedScheduleId(null)
+      await refetchScheduleData({ includeDetail: false })
       setEditorMode('idle')
       form.resetFields()
+      setActionSuccess(`调度 ${deletedScheduleId} 已删除，后端返回：${backendMessage}。`)
     } catch (error) {
+      setActionSuccess(null)
       setActionError(error instanceof Error ? error.message : '调度删除失败。')
     } finally {
       setIsSubmitting(false)
@@ -232,76 +313,84 @@ export function ScheduleManagementPage() {
         <div>
           <Typography.Title level={2}>调度管理</Typography.Title>
           <Typography.Paragraph>
-            这是试点现场的调度 CRUD 页面，底层接入 `/database_server/clean_schedule_service`。
+            调度 CRUD 统一通过 `/database_server/app/clean_schedule_service`。
           </Typography.Paragraph>
         </div>
         <Space size="middle" wrap>
-          <Tag color="gold">调度配置</Tag>
+          <Tag color="gold">调度站点页</Tag>
           <Tag color={connectionTag.color}>{connectionTag.label}</Tag>
           <RosbridgeEndpointControl
             snapshot={snapshot}
             defaultUrl={defaultUrl}
-            quickUrls={quickUrls}
             onConnect={handleReconnect}
           />
         </Space>
       </header>
 
       {snapshot.status === 'error' && snapshot.lastError ? (
-        <Alert
-          showIcon
-          type="error"
-          title="rosbridge 连接失败"
+        <AppFeedbackBanner
+          tone="error"
+          title="ROS 连接异常"
           description={snapshot.lastError}
           className="schedule-banner"
         />
       ) : null}
 
       {snapshot.status === 'mock' ? (
-        <Alert
-          showIcon
-          type="info"
-          title="当前为 Mock 模式"
-          description="如需连接真实后端，请在 `.env.development` 中设置 `VITE_USE_MOCK_DATA=false`。"
+        <AppFeedbackBanner
+          tone="info"
+          title="当前正在使用 Mock 数据"
+          description="如果需要接入真实后端，请在 `.env.development` 中设置 `VITE_USE_MOCK_DATA=false`。"
           className="schedule-banner"
         />
       ) : null}
 
       {schedulesQuery.error instanceof Error ? (
-        <Alert
-          showIcon
-          type="error"
+        <AppFeedbackBanner
+          tone="error"
           title="调度列表加载失败"
           description={schedulesQuery.error.message}
+          actionLabel="重试"
+          onAction={() => void refetchScheduleData()}
           className="schedule-banner"
         />
       ) : null}
 
       {tasksQuery.error instanceof Error ? (
-        <Alert
-          showIcon
-          type="warning"
-          title="任务列表不可用"
+        <AppFeedbackBanner
+          tone="warning"
+          title="任务目录加载失败"
           description={tasksQuery.error.message}
+          actionLabel="重试"
+          onAction={() => void refetchScheduleData()}
           className="schedule-banner"
         />
       ) : null}
 
       {actionError ? (
-        <Alert
-          showIcon
-          type="warning"
-          title="调度操作反馈"
+        <AppFeedbackBanner
+          tone="warning"
+          title="调度操作未完成"
           description={actionError}
           className="schedule-banner"
         />
       ) : null}
 
+      {actionSuccess ? (
+        <AppFeedbackBanner
+          closable
+          tone="success"
+          title="调度操作已完成"
+          description={actionSuccess}
+          className="schedule-banner"
+          onClose={() => setActionSuccess(null)}
+        />
+      ) : null}
+
       {profileCatalogError ? (
-        <Alert
-          showIcon
-          type="warning"
-          title="档位目录部分不可用"
+        <AppFeedbackBanner
+          tone="warning"
+          title="档位目录加载失败"
           description={profileCatalogError}
           className="schedule-banner"
         />
@@ -323,21 +412,43 @@ export function ScheduleManagementPage() {
               </Space>
             }
           >
+            <div className="schedule-list-toolbar">
+              <Input.Search
+                allowClear
+                placeholder="搜索 schedule_id、任务、类型或时间"
+                value={scheduleSearchText}
+                onChange={(event) => setScheduleSearchText(event.target.value)}
+              />
+              <Select
+                value={scheduleSortMode}
+                options={[
+                  { label: '启用优先', value: 'enabled-first' },
+                  { label: '按任务排序', value: 'task-name' },
+                  { label: '最近触发优先', value: 'recent-fire' },
+                ]}
+                onChange={(value) => setScheduleSortMode(value)}
+              />
+            </div>
+
+            <Typography.Paragraph className="schedule-list-summary">
+              当前显示 {visibleSchedules.length} / {schedulesQuery.data?.length ?? 0} 条调度
+              {selectedScheduleHiddenByFilter ? '，已选调度被当前筛选暂时隐藏。' : '。'}
+            </Typography.Paragraph>
+
             {schedulesQuery.isLoading ? (
-              <div className="schedule-loading">
-                <Spin />
-                <Typography.Text>正在加载调度列表...</Typography.Text>
-              </div>
-            ) : schedulesQuery.data && schedulesQuery.data.length > 0 ? (
+              <AppLoadingState message="正在加载调度列表..." className="schedule-loading" />
+            ) : visibleSchedules.length > 0 ? (
               <div className="schedule-list">
-                {schedulesQuery.data.map((schedule) => (
+                {visibleSchedules.map((schedule) => (
                   <button
                     key={schedule.id}
                     type="button"
                     className={`schedule-list-item ${selectedScheduleId === schedule.id ? 'is-selected' : ''}`}
                     onClick={() => {
                       setSelectedScheduleId(schedule.id)
+                      setAutoSelectFirstSchedule(true)
                       setActionError(null)
+                      setActionSuccess(null)
                     }}
                   >
                     <span className="schedule-list-main">
@@ -356,7 +467,16 @@ export function ScheduleManagementPage() {
                 ))}
               </div>
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未返回任何调度。" />
+              <AppEmptyState
+                title={scheduleSearchText.trim() ? '没有匹配的调度' : '暂无调度'}
+                description={
+                  scheduleSearchText.trim()
+                    ? '当前筛选条件下没有结果，可以清空搜索词后再试。'
+                    : '当前还没有可显示的调度记录。'
+                }
+                actionLabel={scheduleSearchText.trim() ? '清空筛选' : undefined}
+                onAction={scheduleSearchText.trim() ? () => setScheduleSearchText('') : undefined}
+              />
             )}
           </Card>
         </aside>
@@ -366,7 +486,12 @@ export function ScheduleManagementPage() {
             detail={selectedScheduleDetail}
             isLoading={detailQuery.isLoading}
             isRefreshing={detailQuery.isFetching && Boolean(selectedSchedule)}
-            error={detailQuery.error instanceof Error ? detailQuery.error.message : null}
+            error={
+              !detailNotFound && detailQuery.error instanceof Error
+                ? detailQuery.error.message
+                : null
+            }
+            notFound={detailNotFound}
             isSubmitting={isSubmitting}
             metadataEntries={metadataEntries}
             planProfileLabel={renderProfileValue(selectedScheduleDetail?.planProfileName ?? '', 'plan')}
@@ -391,17 +516,17 @@ export function ScheduleManagementPage() {
           />
 
           <Card
-            title="当前范围"
+            title="本页范围"
             className="schedule-card"
             extra={<UnorderedListOutlined />}
           >
             <ul className="schedule-scope-list">
               {[
                 '调度列表查询',
-                '调度详情查询',
-                '创建单次 / 每日 / 每周调度',
-                '更新调度配置',
-                '删除调度',
+                '调度详情查看',
+                '按任务关联 / 周期 / 时间窗口创建',
+                '调度修改',
+                '调度删除',
               ].map((item) => (
                 <li key={item}>{item}</li>
               ))}

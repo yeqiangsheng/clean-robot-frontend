@@ -1,167 +1,101 @@
 import { create } from 'zustand'
 
-import { getAppConfig } from '../config/appConfig'
-import type { AuditEventRecord, UserRole } from '../types/appShell'
+import type {
+  AuditEventRecord,
+  CapabilityFlag,
+  SessionPayload,
+  SessionUser,
+  UserRole,
+} from '../types/appShell'
 
-const STORAGE_KEY = 'clean-robot-frontend:app-shell'
+const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
 
-interface PersistedAppShellState {
+type SessionStatus = 'checking' | 'authenticated' | 'anonymous'
+
+interface AppShellState {
+  sessionStatus: SessionStatus
+  sessionId: number
+  currentUser: SessionUser | null
   currentRole: UserRole
-  engineerUnlocked: boolean
+  grantedCapabilities: CapabilityFlag[]
   auditEvents: AuditEventRecord[]
-}
-
-interface AppShellState extends PersistedAppShellState {
-  setCurrentRole: (role: UserRole) => void
-  setEngineerUnlocked: (value: boolean) => void
+  authError: string | null
+  setSession: (payload: SessionPayload | null) => void
+  setSessionStatus: (status: SessionStatus) => void
+  setAuthError: (message: string | null) => void
+  setAuditEvents: (events: AuditEventRecord[]) => void
   appendAuditEvent: (event: AuditEventRecord) => void
-  clearAuditEvents: () => void
-  reset: () => void
+  clearClientSession: () => void
 }
 
-function canUseStorage() {
-  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
-}
-
-function createDefaultState(): PersistedAppShellState {
+function createMockSession(): SessionPayload {
   return {
-    currentRole: 'operator',
-    engineerUnlocked: false,
-    auditEvents: [],
+    user: {
+      username: 'local-engineer',
+      displayName: '本地工程师',
+      role: 'engineer',
+    },
+    capabilities: [
+      'overview',
+      'mapWorkbench',
+      'taskManagement',
+      'scheduleManagement',
+      'executionControl',
+      'slamWorkbench',
+      'runtimeMonitoring',
+      'actuatorControl',
+      'chargingControl',
+      'profileCatalog',
+      'systemReadiness',
+    ],
   }
 }
 
-function sanitizeAuditEvents(events: unknown) {
-  if (!Array.isArray(events)) {
-    return []
-  }
-
-  const retentionMs = getAppConfig().logRetentionDays * 24 * 60 * 60 * 1000
-  const cutoff = Date.now() - retentionMs
-
-  return events
-    .filter((event): event is AuditEventRecord => {
-      if (!event || typeof event !== 'object' || Array.isArray(event)) {
-        return false
-      }
-
-      const record = event as Record<string, unknown>
-
-      return (
-        typeof record.id === 'string' &&
-        typeof record.timestamp === 'number' &&
-        record.timestamp >= cutoff &&
-        typeof record.role === 'string' &&
-        typeof record.category === 'string' &&
-        typeof record.action === 'string' &&
-        typeof record.target === 'string' &&
-        typeof record.status === 'string' &&
-        typeof record.message === 'string' &&
-        typeof record.detail === 'object' &&
-        record.detail !== null &&
-        !Array.isArray(record.detail)
-      )
-    })
-    .sort((left, right) => right.timestamp - left.timestamp)
+function getAnonymousRole(): UserRole {
+  return 'operator'
 }
 
-function loadInitialState(): PersistedAppShellState {
-  if (!canUseStorage()) {
-    return createDefaultState()
-  }
+const initialSession = USE_MOCK_DATA ? createMockSession() : null
 
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-
-    if (!raw) {
-      return createDefaultState()
-    }
-
-    const parsed = JSON.parse(raw) as Partial<PersistedAppShellState>
-
-    return {
-      currentRole:
-        parsed.currentRole === 'service' || parsed.currentRole === 'engineer'
-          ? parsed.currentRole
-          : 'operator',
-      engineerUnlocked: parsed.engineerUnlocked === true,
-      auditEvents: sanitizeAuditEvents(parsed.auditEvents),
-    }
-  } catch {
-    return createDefaultState()
-  }
-}
-
-function persistState(snapshot: PersistedAppShellState) {
-  if (!canUseStorage()) {
-    return
-  }
-
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
-  } catch {
-    // Best effort persistence only.
-  }
-}
-
-const initialState: PersistedAppShellState = loadInitialState()
-
-function toPersistedState(
-  snapshot: Pick<PersistedAppShellState, 'currentRole' | 'engineerUnlocked' | 'auditEvents'>,
-): PersistedAppShellState {
-  return {
-    currentRole: snapshot.currentRole,
-    engineerUnlocked: snapshot.engineerUnlocked,
-    auditEvents: snapshot.auditEvents,
-  }
-}
-
-export const useAppShellStore = create<AppShellState>((set, get) => ({
-  ...initialState,
-  setCurrentRole: (currentRole) => {
-    const nextState = toPersistedState({
-      ...get(),
-      currentRole,
-    })
-
-    persistState(nextState)
-    set({ currentRole })
-  },
-  setEngineerUnlocked: (engineerUnlocked) => {
-    const nextState = toPersistedState({
-      ...get(),
-      engineerUnlocked,
-    })
-
-    persistState(nextState)
-    set({ engineerUnlocked })
-  },
-  appendAuditEvent: (event) => {
-    const retentionMs = getAppConfig().logRetentionDays * 24 * 60 * 60 * 1000
-    const cutoff = Date.now() - retentionMs
-    const auditEvents = [event, ...get().auditEvents]
-      .filter((item) => item.timestamp >= cutoff)
-      .slice(0, 120)
-    const nextState = toPersistedState({
-      ...get(),
-      auditEvents,
-    })
-
-    persistState(nextState)
-    set({ auditEvents })
-  },
-  clearAuditEvents: () => {
-    const nextState = toPersistedState({
-      ...get(),
+export const useAppShellStore = create<AppShellState>((set) => ({
+  sessionStatus: USE_MOCK_DATA ? 'authenticated' : 'checking',
+  sessionId: USE_MOCK_DATA ? 1 : 0,
+  currentUser: initialSession?.user ?? null,
+  currentRole: initialSession?.user.role ?? getAnonymousRole(),
+  grantedCapabilities: initialSession?.capabilities ?? [],
+  auditEvents: [],
+  authError: null,
+  setSession: (payload) =>
+    set((state) => ({
+      sessionStatus: payload ? 'authenticated' : 'anonymous',
+      sessionId: state.sessionId + 1,
+      currentUser: payload?.user ?? null,
+      currentRole: payload?.user.role ?? getAnonymousRole(),
+      grantedCapabilities: payload?.capabilities ?? [],
+      authError: null,
+      auditEvents: payload ? state.auditEvents : [],
+    })),
+  setSessionStatus: (sessionStatus) => set({ sessionStatus }),
+  setAuthError: (authError) => set({ authError }),
+  setAuditEvents: (auditEvents) =>
+    set({
+      auditEvents: [...auditEvents].sort((left, right) => right.timestamp - left.timestamp),
+    }),
+  appendAuditEvent: (event) =>
+    set((state) => ({
+      auditEvents: [event, ...state.auditEvents.filter((item) => item.id !== event.id)].slice(
+        0,
+        120,
+      ),
+    })),
+  clearClientSession: () =>
+    set((state) => ({
+      sessionStatus: 'anonymous',
+      sessionId: state.sessionId + 1,
+      currentUser: null,
+      currentRole: getAnonymousRole(),
+      grantedCapabilities: [],
       auditEvents: [],
-    })
-
-    persistState(nextState)
-    set({ auditEvents: [] })
-  },
-  reset: () => {
-    const nextState = createDefaultState()
-    persistState(nextState)
-    set(nextState)
-  },
+      authError: null,
+    })),
 }))

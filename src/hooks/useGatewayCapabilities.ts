@@ -2,13 +2,16 @@ import { useMemo } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 
-import { getDefaultRolePolicy, isModuleEnabled } from '../config/appConfig'
+import { isModuleEnabled } from '../config/appConfig'
 import {
   createCapabilitySnapshot,
-  fetchCapabilityStatuses,
 } from '../api/gateway/capabilityProbe'
+import { fetchCapabilityMap } from '../api/gateway/siteGatewayClient'
+import { useAppShellStore } from '../stores/appShellStore'
 import { useRosConnection } from './useRosConnection'
 import type { AppModuleKey, CapabilityFlag } from '../types/appShell'
+
+const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
 
 const MODULE_CAPABILITY_MAP: Partial<Record<AppModuleKey, CapabilityFlag[]>> = {
   overview: ['overview'],
@@ -21,24 +24,17 @@ const MODULE_CAPABILITY_MAP: Partial<Record<AppModuleKey, CapabilityFlag[]>> = {
   'actuator-control': ['actuatorControl', 'chargingControl'],
 }
 
-function getEnabledCapabilities() {
-  const rolePolicy = getDefaultRolePolicy()
-  const capabilitySet = new Set<CapabilityFlag>()
-
-  ;(Object.keys(rolePolicy) as Array<keyof typeof rolePolicy>).forEach((role) => {
-    ;(rolePolicy[role] ?? []).forEach((capability) => capabilitySet.add(capability))
-  })
+function getEnabledCapabilities(grantedCapabilities: CapabilityFlag[]) {
+  const capabilitySet = new Set(grantedCapabilities)
 
   ;(Object.keys(MODULE_CAPABILITY_MAP) as AppModuleKey[]).forEach((moduleKey) => {
     const capabilities = MODULE_CAPABILITY_MAP[moduleKey]
 
-    if (!capabilities) {
+    if (!capabilities || isModuleEnabled(moduleKey)) {
       return
     }
 
-    if (!isModuleEnabled(moduleKey)) {
-      capabilities.forEach((capability) => capabilitySet.delete(capability))
-    }
+    capabilities.forEach((capability) => capabilitySet.delete(capability))
   })
 
   capabilitySet.add('overview')
@@ -47,19 +43,23 @@ function getEnabledCapabilities() {
 
 export function useGatewayCapabilities() {
   const { snapshot } = useRosConnection()
-  const enabledCapabilities = useMemo(() => getEnabledCapabilities(), [])
+  const grantedCapabilities = useAppShellStore((state) => state.grantedCapabilities)
+  const enabledCapabilities = useMemo(
+    () => getEnabledCapabilities(grantedCapabilities),
+    [grantedCapabilities],
+  )
   const placeholderData = useMemo(
     () => createCapabilitySnapshot(snapshot, enabledCapabilities),
     [enabledCapabilities, snapshot],
   )
 
   const query = useQuery({
-    queryKey: ['gateway-capabilities', snapshot.url, snapshot.sessionId, enabledCapabilities],
-    queryFn: () => fetchCapabilityStatuses(snapshot, enabledCapabilities),
-    enabled: snapshot.isConnected || snapshot.status === 'mock',
+    queryKey: ['gateway-capabilities', snapshot.sessionId, grantedCapabilities],
+    queryFn: () => (USE_MOCK_DATA ? Promise.resolve(placeholderData) : fetchCapabilityMap()),
+    enabled: enabledCapabilities.length > 0,
     placeholderData,
     retry: false,
-    staleTime: 20_000,
+    staleTime: 20000,
   })
 
   return {

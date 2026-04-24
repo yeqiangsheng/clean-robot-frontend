@@ -6,16 +6,7 @@ import type {
   ReactNode,
 } from 'react'
 
-import {
-  Alert,
-  Button,
-  Select,
-  Space,
-  Spin,
-  Tabs,
-  Tag,
-  Typography,
-} from 'antd'
+import { Button, Space, Tabs, Tag, Typography } from 'antd'
 import {
   AppstoreOutlined,
   CalendarOutlined,
@@ -23,25 +14,83 @@ import {
   ControlOutlined,
   DashboardOutlined,
   HomeOutlined,
-  LockOutlined,
+  LogoutOutlined,
   OrderedListOutlined,
   PlayCircleOutlined,
-  SafetyCertificateOutlined,
 } from '@ant-design/icons'
 
-import { isCapabilityAllowedForRole } from './api/gateway/accessControl'
-import { getAppConfig, isModuleEnabled } from './config/appConfig'
+import {
+  fetchAuditLog,
+  fetchCurrentSession,
+  loginToSiteGateway,
+  logoutFromSiteGateway,
+} from './api/gateway/siteGatewayClient'
+import { LoginScreen } from './components/app/LoginScreen'
+import { AppFeedbackBanner } from './components/feedback/AppFeedbackBanner'
+import { AppLoadingState } from './components/feedback/AppLoadingState'
 import { RuntimeMonitorBridge } from './components/runtime/RuntimeMonitorBridge'
+import { getAppConfig, isModuleEnabled } from './config/appConfig'
 import { useInputCapabilities } from './hooks/useInputCapabilities'
 import { useRosConnection } from './hooks/useRosConnection'
 import { useAppShellStore } from './stores/appShellStore'
 import type { AppModuleKey, CapabilityFlag, UserRole } from './types/appShell'
+import type { RuntimeMonitorOptions, RuntimeTopicKey } from './types/runtime'
+import {
+  getConnectionRecoveryHint,
+  getGatewayConnectionPresentation,
+  getRosConnectionPresentation,
+} from './utils/connectionStatus'
 import './App.css'
 
+const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
+
+const RUNTIME_BRIDGE_TABS: AppModuleKey[] = [
+  'overview',
+  'execution',
+  'runtime',
+  'actuator-control',
+]
+
+const OVERVIEW_RUNTIME_TOPIC_KEYS: RuntimeTopicKey[] = [
+  'taskState',
+  'executorState',
+  'dockSupplyState',
+  'batteryState',
+  'stationStatus',
+]
+
+const EXECUTION_RUNTIME_TOPIC_KEYS: RuntimeTopicKey[] = [
+  'taskState',
+  'executorState',
+  'runProgress',
+]
+
+const ACTUATOR_RUNTIME_TOPIC_KEYS: RuntimeTopicKey[] = [
+  'batteryState',
+  'combinedStatus',
+  'stationStatus',
+]
+
+const RUNTIME_BRIDGE_OPTIONS: Partial<Record<AppModuleKey, RuntimeMonitorOptions>> = {
+  overview: {
+    topicKeys: OVERVIEW_RUNTIME_TOPIC_KEYS,
+    includeEndpointInfo: false,
+  },
+  execution: {
+    topicKeys: EXECUTION_RUNTIME_TOPIC_KEYS,
+    includeEndpointInfo: false,
+  },
+  runtime: {
+    includeEndpointInfo: true,
+  },
+  'actuator-control': {
+    topicKeys: ACTUATOR_RUNTIME_TOPIC_KEYS,
+    includeEndpointInfo: false,
+  },
+}
+
 type PageModule = Record<string, unknown>
-type TabPageComponent =
-  | ComponentType
-  | LazyExoticComponent<ComponentType>
+type TabPageComponent = ComponentType | LazyExoticComponent<ComponentType>
 
 interface TabDefinition {
   key: AppModuleKey
@@ -53,9 +102,16 @@ interface TabDefinition {
   component: TabPageComponent
 }
 
-const pageLoaders = import.meta.glob('./pages/*.tsx')
+const pageLoaders = import.meta.glob([
+  './pages/*.tsx',
+  '!./pages/*.test.tsx',
+  '!./pages/*.spec.tsx',
+])
 const eagerPageModules = import.meta.env.DEV
-  ? import.meta.glob('./pages/*.tsx', { eager: true })
+  ? import.meta.glob(
+      ['./pages/*.tsx', '!./pages/*.test.tsx', '!./pages/*.spec.tsx'],
+      { eager: true },
+    )
   : null
 
 function createTabPage(modulePath: string, exportName: string): TabPageComponent {
@@ -129,41 +185,34 @@ const RuntimeMonitoringPage = createTabPage(
   'RuntimeMonitoringPage',
 )
 
-function getConnectionTag(status: string) {
-  switch (status) {
-    case 'connected':
-      return { color: 'success', label: 'ROS 已连接' }
-    case 'connecting':
-      return { color: 'processing', label: 'ROS 连接中' }
-    case 'error':
-      return { color: 'error', label: 'ROS 异常' }
-    case 'mock':
-      return { color: 'purple', label: 'Mock 数据' }
-    case 'closed':
-      return { color: 'warning', label: 'ROS 已断开' }
-    default:
-      return { color: 'default', label: 'ROS 空闲' }
-  }
-}
-
 function getRoleLabel(role: UserRole) {
   switch (role) {
     case 'service':
-      return '售后'
+      return '服务'
     case 'engineer':
       return '工程师'
+    case 'admin':
+      return '管理员'
     default:
       return '操作员'
   }
 }
 
+function getRoleColor(role: UserRole) {
+  switch (role) {
+    case 'engineer':
+      return 'purple'
+    case 'admin':
+      return 'red'
+    case 'service':
+      return 'blue'
+    default:
+      return 'default'
+  }
+}
+
 function TabPageFallback() {
-  return (
-    <div className="app-tab-loading">
-      <Spin size="large" />
-      <Typography.Text>页面加载中...</Typography.Text>
-    </div>
-  )
+  return <AppLoadingState className="app-tab-loading" message="页面加载中..." />
 }
 
 function AppErrorFallback({
@@ -177,18 +226,12 @@ function AppErrorFallback({
 }) {
   return (
     <div className="app-error-panel">
-      <Alert
-        showIcon
-        type="error"
+      <AppFeedbackBanner
+        tone="error"
         title={title}
-        description={
-          <div className="app-error-content">
-            <Typography.Paragraph>{description}</Typography.Paragraph>
-            <Button type="primary" onClick={onRetry}>
-              重试
-            </Button>
-          </div>
-        }
+        description={description}
+        actionLabel="重试"
+        onAction={onRetry}
       />
     </div>
   )
@@ -249,7 +292,7 @@ const TAB_DEFINITIONS: TabDefinition[] = [
     key: 'workbench',
     label: '地图工作台',
     title: '地图工作台加载失败',
-    description: '地图工作台发生异常，可单独重试当前标签页，无需重载整个壳层。',
+    description: '地图工作台发生异常，可单独重试当前标签页。',
     capability: 'mapWorkbench',
     icon: <AppstoreOutlined />,
     component: MapWorkbenchPage,
@@ -257,8 +300,8 @@ const TAB_DEFINITIONS: TabDefinition[] = [
   {
     key: 'tasks',
     label: '任务',
-    title: '任务管理页加载失败',
-    description: '任务管理页发生异常，可单独重试当前标签页，无需重载整个壳层。',
+    title: '任务页加载失败',
+    description: '任务页发生异常，可单独重试当前标签页。',
     capability: 'taskManagement',
     icon: <OrderedListOutlined />,
     component: TaskManagementPage,
@@ -266,8 +309,8 @@ const TAB_DEFINITIONS: TabDefinition[] = [
   {
     key: 'schedules',
     label: '调度',
-    title: '调度管理页加载失败',
-    description: '调度管理页发生异常，可单独重试当前标签页，无需重载整个壳层。',
+    title: '调度页加载失败',
+    description: '调度页发生异常，可单独重试当前标签页。',
     capability: 'scheduleManagement',
     icon: <CalendarOutlined />,
     component: ScheduleManagementPage,
@@ -276,7 +319,7 @@ const TAB_DEFINITIONS: TabDefinition[] = [
     key: 'execution',
     label: '执行控制',
     title: '执行控制页加载失败',
-    description: '执行控制页发生异常，可单独重试当前标签页，无需重载整个壳层。',
+    description: '执行控制页发生异常，可单独重试当前标签页。',
     capability: 'executionControl',
     icon: <PlayCircleOutlined />,
     component: ExecutionControlPage,
@@ -285,7 +328,7 @@ const TAB_DEFINITIONS: TabDefinition[] = [
     key: 'runtime',
     label: '运行监控',
     title: '运行监控页加载失败',
-    description: '运行监控页发生异常，可单独重试当前标签页，无需重载整个壳层。',
+    description: '运行监控页发生异常，可单独重试当前标签页。',
     capability: 'runtimeMonitoring',
     icon: <DashboardOutlined />,
     component: RuntimeMonitoringPage,
@@ -293,8 +336,8 @@ const TAB_DEFINITIONS: TabDefinition[] = [
   {
     key: 'slam',
     label: 'SLAM',
-    title: 'SLAM 工程台加载失败',
-    description: 'SLAM 页面发生异常，可单独重试当前标签页，无需重载整个壳层。',
+    title: 'SLAM 工作台加载失败',
+    description: 'SLAM 工作台发生异常，可单独重试当前标签页。',
     capability: 'slamWorkbench',
     icon: <CompassOutlined />,
     component: SlamWorkbenchPage,
@@ -303,7 +346,7 @@ const TAB_DEFINITIONS: TabDefinition[] = [
     key: 'actuator-control',
     label: '执行机构调试',
     title: '执行机构调试页加载失败',
-    description: '执行机构调试页发生异常，可单独重试当前标签页，无需重载整个壳层。',
+    description: '执行机构调试页发生异常，可单独重试当前标签页。',
     capability: 'actuatorControl',
     icon: <ControlOutlined />,
     component: ActuatorControlPage,
@@ -314,35 +357,73 @@ function App() {
   const config = getAppConfig()
   const { isTouchCapable, isCoarsePointer } = useInputCapabilities()
   const { snapshot } = useRosConnection()
+  const sessionStatus = useAppShellStore((state) => state.sessionStatus)
+  const currentUser = useAppShellStore((state) => state.currentUser)
   const currentRole = useAppShellStore((state) => state.currentRole)
-  const setCurrentRole = useAppShellStore((state) => state.setCurrentRole)
-  const engineerUnlocked = useAppShellStore((state) => state.engineerUnlocked)
-  const setEngineerUnlocked = useAppShellStore((state) => state.setEngineerUnlocked)
+  const grantedCapabilities = useAppShellStore((state) => state.grantedCapabilities)
+  const authError = useAppShellStore((state) => state.authError)
+  const setSession = useAppShellStore((state) => state.setSession)
+  const setSessionStatus = useAppShellStore((state) => state.setSessionStatus)
+  const setAuthError = useAppShellStore((state) => state.setAuthError)
+  const setAuditEvents = useAppShellStore((state) => state.setAuditEvents)
+  const clearClientSession = useAppShellStore((state) => state.clearClientSession)
   const [activeKey, setActiveKey] = useState<AppModuleKey>('overview')
 
-  const connectionTag = getConnectionTag(snapshot.status)
-  const displayRole =
-    currentRole === 'engineer' && !engineerUnlocked ? 'service' : currentRole
+  const gatewayTag = getGatewayConnectionPresentation(snapshot.gatewayStatus)
+  const rosTag = getRosConnectionPresentation(snapshot.status)
+  const connectionHint = getConnectionRecoveryHint(snapshot)
+
+  useEffect(() => {
+    if (USE_MOCK_DATA) {
+      return
+    }
+
+    let disposed = false
+
+    const bootstrapSession = async () => {
+      setSessionStatus('checking')
+
+      try {
+        const session = await fetchCurrentSession()
+
+        if (disposed) {
+          return
+        }
+
+        setSession(session)
+        const auditEvents = await fetchAuditLog()
+
+        if (!disposed) {
+          setAuditEvents(auditEvents)
+        }
+      } catch {
+        if (!disposed) {
+          clearClientSession()
+        }
+      }
+    }
+
+    void bootstrapSession()
+
+    return () => {
+      disposed = true
+    }
+  }, [clearClientSession, setAuditEvents, setSession, setSessionStatus])
 
   const visibleTabs = useMemo(
     () =>
       TAB_DEFINITIONS.filter(
-        (tab) =>
-          isModuleEnabled(tab.key) &&
-          isCapabilityAllowedForRole(tab.capability, displayRole),
+        (tab) => isModuleEnabled(tab.key) && grantedCapabilities.includes(tab.capability),
       ),
-    [displayRole],
+    [grantedCapabilities],
   )
-
-  useEffect(() => {
-    if (currentRole === 'engineer' && !engineerUnlocked) {
-      setCurrentRole('service')
-    }
-  }, [currentRole, engineerUnlocked, setCurrentRole])
 
   const resolvedActiveKey = visibleTabs.some((tab) => tab.key === activeKey)
     ? activeKey
-    : 'overview'
+    : (visibleTabs[0]?.key ?? 'overview')
+
+  const shouldMountRuntimeBridge = RUNTIME_BRIDGE_TABS.includes(resolvedActiveKey)
+  const runtimeBridgeOptions = RUNTIME_BRIDGE_OPTIONS[resolvedActiveKey] ?? {}
 
   const renderTabPage = (title: string, description: string, children: ReactNode) => (
     <AppSectionErrorBoundary title={title} description={description}>
@@ -350,20 +431,46 @@ function App() {
     </AppSectionErrorBoundary>
   )
 
-  const handleRoleChange = (nextRole: UserRole) => {
-    if (nextRole === 'engineer' && !engineerUnlocked) {
-      setEngineerUnlocked(true)
-      setCurrentRole('engineer')
+  const handleLogin = async (username: string, password: string) => {
+    setAuthError(null)
+
+    try {
+      const session = await loginToSiteGateway(username, password)
+      setSession(session)
+      setAuditEvents(await fetchAuditLog())
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : '登录失败。')
+      throw error
+    }
+  }
+
+  const handleLogout = async () => {
+    if (USE_MOCK_DATA) {
       return
     }
 
-    setCurrentRole(nextRole)
+    try {
+      await logoutFromSiteGateway()
+    } finally {
+      clearClientSession()
+      setActiveKey('overview')
+    }
   }
 
-  const handleExitEngineerMode = () => {
-    setEngineerUnlocked(false)
-    setCurrentRole('service')
-    setActiveKey('overview')
+  if (sessionStatus === 'checking') {
+    return <AppLoadingState className="app-tab-loading" message="正在校验站点会话..." />
+  }
+
+  if (sessionStatus !== 'authenticated' || !currentUser) {
+    return (
+      <LoginScreen
+        siteName={config.siteName}
+        robotId={config.robotId}
+        loading={false}
+        error={authError}
+        onSubmit={handleLogin}
+      />
+    )
   }
 
   return (
@@ -381,7 +488,7 @@ function App() {
         title="运行桥接异常"
         description="运行时 topic 桥接已与壳层隔离，可单独重试。"
       >
-        <RuntimeMonitorBridge />
+        {shouldMountRuntimeBridge ? <RuntimeMonitorBridge {...runtimeBridgeOptions} /> : null}
       </AppSectionErrorBoundary>
 
       <header className="app-topbar">
@@ -389,54 +496,52 @@ function App() {
           <Space size="small" wrap>
             <Tag color="gold">{config.siteName}</Tag>
             <Tag>{config.robotId}</Tag>
-            <Tag color={connectionTag.color}>{connectionTag.label}</Tag>
-            <Tag color={displayRole === 'engineer' ? 'purple' : 'blue'}>
-              角色：{getRoleLabel(displayRole)}
-            </Tag>
+            <Tag color={gatewayTag.color}>{gatewayTag.label}</Tag>
+            <Tag color={rosTag.color}>{rosTag.label}</Tag>
+            <Tag color={getRoleColor(currentRole)}>{getRoleLabel(currentRole)}</Tag>
+            <Tag color="geekblue">{currentUser.displayName}</Tag>
           </Space>
+
           <Typography.Title data-testid="app-topbar-title" level={3}>
-            清洁机器人试点前端
+            清洁机器人商用前端
           </Typography.Title>
+
           <Typography.Paragraph>
-            任务、运行监控和地图工作流默认保持可见。高风险 SLAM 与执行机构工具需显式进入工程师模式后才开放。
+            浏览器现在通过本地站点 Gateway 访问现场能力。高风险动作、审计和权限判断已经从
+            浏览器本地状态迁移到服务端会话边界。
           </Typography.Paragraph>
         </div>
 
         <div className="app-topbar-actions">
           <Space size="small" wrap>
-            <Select<UserRole>
-              value={currentRole}
-              style={{ width: 150 }}
-              onChange={handleRoleChange}
-              options={[
-                { label: '操作员', value: 'operator' },
-                { label: '售后', value: 'service' },
-                { label: '工程师', value: 'engineer' },
-              ]}
-            />
-            {engineerUnlocked ? (
-              <Button icon={<SafetyCertificateOutlined />} onClick={handleExitEngineerMode}>
-                退出工程师模式
+            {!USE_MOCK_DATA ? (
+              <Button icon={<LogoutOutlined />} onClick={() => void handleLogout()}>
+                退出登录
               </Button>
-            ) : (
-              <Button icon={<LockOutlined />} onClick={() => handleRoleChange('engineer')}>
-                进入工程师模式
-              </Button>
-            )}
+            ) : null}
           </Space>
+
           <Typography.Text type="secondary">
             版本 {__APP_VERSION__} | 构建 {__APP_BUILD_TIME__}
           </Typography.Text>
         </div>
       </header>
 
-      <Alert
-        showIcon
-        type="warning"
-        className="app-shell-banner"
-        title="高风险工具已隔离"
-        description="SLAM 提交、执行机构调试和低层命令工具仅在工程师模式下开放，并会写入本地审计日志。"
-      />
+      {connectionHint ? (
+        <AppFeedbackBanner
+          tone={connectionHint.type}
+          className="app-shell-banner"
+          title={connectionHint.title}
+          description={connectionHint.description}
+        />
+      ) : (
+        <AppFeedbackBanner
+          tone="info"
+          className="app-shell-banner"
+          title="站点 Gateway 已接管正式权限边界"
+          description="工程师能力、高风险命令和审计记录现在统一经过本地站点 Gateway。浏览器界面只负责展示和交互，不再承担真实认证或明文口令校验。"
+        />
+      )}
 
       <Tabs
         className="app-tabs"

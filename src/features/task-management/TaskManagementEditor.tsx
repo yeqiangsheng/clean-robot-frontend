@@ -2,19 +2,19 @@ import type { FormInstance } from 'antd'
 import {
   Button,
   Card,
-  Empty,
   Form,
   Input,
   InputNumber,
   Select,
   Space,
-  Spin,
   Switch,
   Tag,
   Typography,
 } from 'antd'
 import { CheckCircleOutlined, PlusOutlined } from '@ant-design/icons'
 
+import { AppEmptyState } from '../../components/feedback/AppEmptyState'
+import { AppLoadingState } from '../../components/feedback/AppLoadingState'
 import type { TaskDraftInput } from '../../types/task'
 import { STANDARD_CLEAN_MODE_SELECT_OPTIONS } from '../../utils/cleanMode'
 
@@ -36,6 +36,10 @@ interface TaskManagementEditorProps {
   onSubmit: () => void
   onCancel: () => void
   onMapChange: () => void
+}
+
+function renderSelectLoading(message: string) {
+  return <AppLoadingState compact message={message} />
 }
 
 export function TaskManagementEditor({
@@ -65,23 +69,16 @@ export function TaskManagementEditor({
         editorMode === 'create' ? (
           <Tag color="green">新建</Tag>
         ) : editorMode === 'edit' ? (
-          <Tag color="blue">编辑</Tag>
+          <Tag color="blue">编辑中</Tag>
         ) : (
           <Tag>空闲</Tag>
         )
       }
     >
       {editorMode === 'idle' ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="可新建任务，或选择已有任务进入编辑。"
-        />
+        <AppEmptyState description="可新建任务，或选择已有任务进入编辑。" />
       ) : (
-        <Form<TaskDraftInput>
-          form={form}
-          layout="vertical"
-          className="task-form"
-        >
+        <Form<TaskDraftInput> form={form} layout="vertical" className="task-form">
           <Form.Item
             name="taskId"
             label="任务 ID"
@@ -127,7 +124,9 @@ export function TaskManagementEditor({
               options={mapOptions}
               optionFilterProp="label"
               placeholder="请选择地图"
-              notFoundContent={mapLoading ? <Spin size="small" /> : '暂无可选地图'}
+              notFoundContent={
+                mapLoading ? renderSelectLoading('加载地图中...') : '暂无可选地图'
+              }
               onChange={onMapChange}
             />
           </Form.Item>
@@ -145,7 +144,9 @@ export function TaskManagementEditor({
               optionFilterProp="label"
               placeholder={editorMapName ? '请选择区域' : '请先选择地图'}
               notFoundContent={
-                zoneLoading ? <Spin size="small" /> : '当前地图下暂无可选区域'
+                zoneLoading
+                  ? renderSelectLoading('加载区域中...')
+                  : '当前地图下暂无可选区域'
               }
             />
           </Form.Item>
@@ -168,7 +169,9 @@ export function TaskManagementEditor({
               optionFilterProp="label"
               placeholder="请选择规划档位"
               notFoundContent={
-                planProfileLoading ? <Spin size="small" /> : '暂无可选规划档位'
+                planProfileLoading
+                  ? renderSelectLoading('加载规划档位中...')
+                  : '暂无可选规划档位'
               }
             />
           </Form.Item>
@@ -185,7 +188,9 @@ export function TaskManagementEditor({
               optionFilterProp="label"
               placeholder="请选择系统档位"
               notFoundContent={
-                sysProfileLoading ? <Spin size="small" /> : '暂无可选系统档位'
+                sysProfileLoading
+                  ? renderSelectLoading('加载系统档位中...')
+                  : '暂无可选系统档位'
               }
             />
           </Form.Item>
@@ -252,7 +257,7 @@ export function TaskManagementEditor({
           </Space>
 
           <Typography.Paragraph className="task-footnote">
-            后端校验错误会直接展示，方便现场在不丢上下文的情况下查看真实失败原因。
+            后端校验错误会直接展示，方便现场在不中断上下文的情况下查看真实失败原因。
           </Typography.Paragraph>
         </Form>
       )}

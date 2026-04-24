@@ -1,4 +1,6 @@
 import { getRosConnectionManager } from './client'
+import { setRosDebugEvent } from './debug'
+import { MAP_CATALOG_SERVICE } from './serviceNames'
 
 import type { MapCatalogEntry } from '../../types/mapCatalog'
 import type { RosServiceRequest } from '../../types/ros'
@@ -7,8 +9,10 @@ type JsonRecord = Record<string, unknown>
 
 const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
 
-const MAP_SERVICE_NAME = '/clean_robot_server/map_server'
-const MAP_SERVICE_TYPE = 'my_msg_srv/OperateMap'
+const MAP_SERVICE_NAME = MAP_CATALOG_SERVICE.canonicalName
+const MAP_SERVICE_TYPE = MAP_CATALOG_SERVICE.serviceType
+const MAP_DEPRECATED_FALLBACK_SERVICE_NAME =
+  MAP_CATALOG_SERVICE.deprecatedFallbackName
 const MAP_OPERATIONS = {
   add: 1,
   getAll: 4,
@@ -93,11 +97,35 @@ function createServiceError(payload: unknown, fallbackMessage: string) {
 
 async function callRosService(payload: RosServiceRequest) {
   const client = getRosConnectionManager()
-  return client.callService<RosServiceRequest, JsonRecord>({
-    serviceName: MAP_SERVICE_NAME,
-    serviceType: MAP_SERVICE_TYPE,
-    request: payload,
-  })
+
+  const callService = (serviceName: string) =>
+    client.callService<RosServiceRequest, JsonRecord>({
+      serviceName,
+      serviceType: MAP_SERVICE_TYPE,
+      request: payload,
+    })
+
+  try {
+    return await callService(MAP_SERVICE_NAME)
+  } catch (canonicalError) {
+    setRosDebugEvent(`map:deprecated-fallback:${MAP_DEPRECATED_FALLBACK_SERVICE_NAME}`)
+
+    try {
+      return await callService(MAP_DEPRECATED_FALLBACK_SERVICE_NAME)
+    } catch (fallbackError) {
+      const fallbackMessage =
+        fallbackError instanceof Error
+          ? fallbackError.message
+          : `Deprecated fallback map service ${MAP_DEPRECATED_FALLBACK_SERVICE_NAME} failed.`
+      const normalizedFallbackError = new Error(fallbackMessage)
+
+      if (canonicalError instanceof Error && canonicalError.message.trim().length > 0) {
+        normalizedFallbackError.message = `${normalizedFallbackError.message} (canonical failure: ${canonicalError.message})`
+      }
+
+      throw normalizedFallbackError
+    }
+  }
 }
 
 function normalizeMapEntry(record: JsonRecord): MapCatalogEntry {

@@ -1,68 +1,84 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const STORAGE_KEY = 'clean-robot-frontend:app-shell'
+import type { AuditEventRecord, SessionPayload } from '../types/appShell'
 
-function buildAuditEvent(timestamp: number) {
+function buildAuditEvent(timestamp: number, id = `audit-${timestamp}`): AuditEventRecord {
   return {
-    id: `audit-${timestamp}`,
+    id,
     timestamp,
-    role: 'engineer' as const,
-    category: 'actuator' as const,
+    actor: 'unit-test',
+    role: 'engineer',
+    category: 'actuator',
     action: 'test-action',
     target: '/test',
-    status: 'success' as const,
+    status: 'success',
     message: 'test message',
     detail: {
       source: 'unit-test',
     },
+    requestId: 'req-unit-test',
+  }
+}
+
+function buildSession(role: SessionPayload['user']['role'] = 'service'): SessionPayload {
+  return {
+    user: {
+      username: `${role}-user`,
+      displayName: `${role} 用户`,
+      role,
+    },
+    capabilities: ['overview', 'taskManagement', 'scheduleManagement'],
   }
 }
 
 describe('appShellStore', () => {
   beforeEach(() => {
-    window.localStorage.clear()
     vi.resetModules()
   })
 
-  it('hydrates persisted state and prunes expired audit entries', async () => {
-    const now = Date.now()
-    const freshEvent = buildAuditEvent(now)
-    const expiredEvent = buildAuditEvent(now - 20 * 24 * 60 * 60 * 1000)
-
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        currentRole: 'engineer',
-        engineerUnlocked: true,
-        auditEvents: [freshEvent, expiredEvent],
-      }),
-    )
-
+  it('applies a server session to the runtime store', async () => {
     const { useAppShellStore } = await import('./appShellStore')
-    const state = useAppShellStore.getState()
+    const session = buildSession('engineer')
 
+    useAppShellStore.getState().setSession(session)
+
+    const state = useAppShellStore.getState()
+    expect(state.sessionStatus).toBe('authenticated')
+    expect(state.currentUser).toEqual(session.user)
     expect(state.currentRole).toBe('engineer')
-    expect(state.engineerUnlocked).toBe(true)
-    expect(state.auditEvents).toEqual([freshEvent])
+    expect(state.grantedCapabilities).toEqual(session.capabilities)
   })
 
-  it('persists runtime mutations back to localStorage', async () => {
+  it('sorts audit events and deduplicates append by id', async () => {
     const { useAppShellStore } = await import('./appShellStore')
-    const auditEvent = buildAuditEvent(Date.now())
+    const newer = buildAuditEvent(200, 'same-id')
+    const older = buildAuditEvent(100, 'older-id')
+    const replacement = buildAuditEvent(300, 'same-id')
 
-    useAppShellStore.getState().setCurrentRole('service')
-    useAppShellStore.getState().setEngineerUnlocked(true)
-    useAppShellStore.getState().appendAuditEvent(auditEvent)
+    useAppShellStore.getState().setAuditEvents([older, newer])
+    expect(useAppShellStore.getState().auditEvents.map((item) => item.timestamp)).toEqual([200, 100])
 
-    const persisted = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}')
+    useAppShellStore.getState().appendAuditEvent(replacement)
+    expect(useAppShellStore.getState().auditEvents).toHaveLength(2)
+    expect(useAppShellStore.getState().auditEvents[0]).toEqual(replacement)
+    expect(useAppShellStore.getState().auditEvents[1]).toEqual(older)
+  })
 
-    expect(persisted.currentRole).toBe('service')
-    expect(persisted.engineerUnlocked).toBe(true)
-    expect(persisted.auditEvents).toHaveLength(1)
-    expect(persisted.auditEvents[0]).toMatchObject({
-      id: auditEvent.id,
-      action: auditEvent.action,
-      target: auditEvent.target,
-    })
+  it('clears the active session back to anonymous state', async () => {
+    const { useAppShellStore } = await import('./appShellStore')
+
+    useAppShellStore.getState().setSession(buildSession('admin'))
+    useAppShellStore.getState().appendAuditEvent(buildAuditEvent(Date.now()))
+    const previousSessionId = useAppShellStore.getState().sessionId
+
+    useAppShellStore.getState().clearClientSession()
+
+    const state = useAppShellStore.getState()
+    expect(state.sessionStatus).toBe('anonymous')
+    expect(state.currentUser).toBeNull()
+    expect(state.currentRole).toBe('operator')
+    expect(state.grantedCapabilities).toEqual([])
+    expect(state.auditEvents).toEqual([])
+    expect(state.sessionId).toBe(previousSessionId + 1)
   })
 })

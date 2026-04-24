@@ -1,7 +1,14 @@
-﻿import { Button, Card, Empty, Space, Tag, Typography } from 'antd'
+import { Button, Card, Space, Tag, Typography } from 'antd'
 
+import { AppEmptyState } from '../feedback/AppEmptyState'
 import type { SlamWorkflowJob } from '../../types/slam-workflow'
-import { formatDateTime, getSlamJobStateTag } from '../../utils/slam'
+import {
+  formatDateTime,
+  getSlamActionLabel,
+  getSlamJobResultDetail,
+  getSlamJobStateTag,
+  getSlamJobSummary,
+} from '../../utils/slam'
 
 type SlamJobHistoryProps = {
   jobs: SlamWorkflowJob[]
@@ -20,45 +27,49 @@ export function SlamJobHistory({
 }: SlamJobHistoryProps) {
   return (
     <Card
-      title="Recent Jobs"
+      title="最近作业记录"
       className="slam-card"
       extra={
         <Button size="small" type="text" disabled={jobs.length === 0} onClick={onClear}>
-          Clear
+          清空
         </Button>
       }
     >
       {jobs.length > 0 ? (
         <div className="slam-job-history-list">
-          {jobs.map((job) => {
+          {jobs.map((job, index) => {
             const stateTag = getSlamJobStateTag(job)
+            const isActive = activeJobId === job.jobId
+            const isLatest = index === 0
 
             return (
               <div key={job.jobId} className="slam-job-history-item">
                 <Space orientation="vertical" size={4} style={{ width: '100%' }}>
                   <Space wrap>
-                    <Typography.Text strong>{job.jobType || job.jobId}</Typography.Text>
+                    <Typography.Text strong>
+                      {getSlamActionLabel(job.operationName)}
+                    </Typography.Text>
                     <Tag color={stateTag.color}>{stateTag.label}</Tag>
-                    {activeJobId === job.jobId ? <Tag color="blue">Focused</Tag> : null}
+                    {isActive ? <Tag color="blue">当前跟踪</Tag> : null}
+                    {!isActive && isLatest ? <Tag>最近结果</Tag> : null}
+                    {!isActive && !isLatest ? <Tag>历史</Tag> : null}
                   </Space>
+
+                  <Typography.Text className="slam-list-subtle">{job.jobId}</Typography.Text>
+                  <Typography.Text>{getSlamJobSummary(job)}</Typography.Text>
+                  <Typography.Text>{getSlamJobResultDetail(job)}</Typography.Text>
                   <Typography.Text className="slam-list-subtle">
-                    {job.jobId}
-                  </Typography.Text>
-                  <Typography.Text>
-                    {job.resultMessage || job.progressText || '--'}
-                  </Typography.Text>
-                  <Typography.Text className="slam-list-subtle">
-                    Updated {formatDateTime(job.updatedTs)}
+                    最近更新时间：{formatDateTime(job.updatedAtMs)}
                   </Typography.Text>
                 </Space>
 
                 <Space className="slam-job-history-actions" size={8} wrap>
                   <Button
                     size="small"
-                    type={activeJobId === job.jobId ? 'primary' : 'default'}
+                    type={isActive ? 'primary' : 'default'}
                     onClick={() => onSelectJob(job.jobId)}
                   >
-                    {activeJobId === job.jobId ? 'Focused' : 'Focus'}
+                    {isActive ? '当前跟踪中' : '查看'}
                   </Button>
                   <Button size="small" onClick={() => onViewJson(job)}>
                     JSON
@@ -69,10 +80,7 @@ export function SlamJobHistory({
           })}
         </div>
       ) : (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="Submitted SLAM jobs will accumulate here during the current frontend session."
-        />
+        <AppEmptyState description="最近提交过的 SLAM 长动作会保留在这里，方便现场回看。" />
       )}
     </Card>
   )

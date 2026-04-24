@@ -1,85 +1,44 @@
-import {
-  cancelSlamWorkflowJob,
-  submitPrepareForTask,
-  submitRelocalize,
-  submitSaveMap,
-  submitStartMapping,
-  submitStopMapping,
-  submitSwitchMapAndLocalize,
-  syncSlamRuntimeState,
-} from '../ros/slamWorkflowServices'
 import { assertCapabilityAllowed, normalizeGatewayError } from './accessControl'
 import { recordAuditEvent } from './auditTrail'
+import { requestSlamAction } from './siteGatewayClient'
+import { SLAM_SUBMIT_SERVICE } from '../ros/serviceNames'
+
 import type {
   SlamActionKind,
-  SlamCancelJobResponse,
   SlamSubmitJobResponse,
-  SlamSyncRuntimeStateResponse,
   SubmitSlamWorkflowRequest,
 } from '../../types/slam-workflow'
+
+const SLAM_SUBMIT_TARGET = SLAM_SUBMIT_SERVICE.canonicalName
+
+function normalizeSlamActionKind(actionKind: SlamActionKind) {
+  return actionKind === 'restart_localization' ? 'relocalize' : actionKind
+}
 
 export async function runSlamAction(
   actionKind: SlamActionKind,
   payload?: SubmitSlamWorkflowRequest,
-): Promise<SlamSubmitJobResponse>
-export async function runSlamAction(
-  actionKind: 'cancel_job',
-  payload: { jobId: string },
-): Promise<SlamCancelJobResponse>
-export async function runSlamAction(
-  actionKind: 'sync_runtime_state',
-): Promise<SlamSyncRuntimeStateResponse>
-export async function runSlamAction(
-  actionKind: SlamActionKind | 'cancel_job' | 'sync_runtime_state',
-  payload: SubmitSlamWorkflowRequest | { jobId: string } | undefined = undefined,
-) {
+): Promise<SlamSubmitJobResponse> {
+  const normalizedActionKind = normalizeSlamActionKind(actionKind)
+
   try {
-    assertCapabilityAllowed('slamWorkbench', `SLAM action ${actionKind}`)
-    const workflowPayload = (payload ?? {}) as SubmitSlamWorkflowRequest
+    assertCapabilityAllowed('slamWorkbench', `SLAM 动作 ${normalizedActionKind}`)
 
-    let result:
-      | SlamSubmitJobResponse
-      | SlamCancelJobResponse
-      | SlamSyncRuntimeStateResponse
-
-    switch (actionKind) {
-      case 'prepare_for_task':
-        result = await submitPrepareForTask(workflowPayload)
-        break
-      case 'switch_map_and_localize':
-        result = await submitSwitchMapAndLocalize(workflowPayload)
-        break
-      case 'relocalize':
-        result = await submitRelocalize(workflowPayload)
-        break
-      case 'start_mapping':
-        result = await submitStartMapping(workflowPayload)
-        break
-      case 'save_map':
-        result = await submitSaveMap(workflowPayload)
-        break
-      case 'stop_mapping':
-        result = await submitStopMapping(workflowPayload)
-        break
-      case 'cancel_job':
-        result = await cancelSlamWorkflowJob(
-          (payload as { jobId: string } | undefined)?.jobId ?? '',
-        )
-        break
-      case 'sync_runtime_state':
-        result = await syncSlamRuntimeState()
-        break
-      default:
-        throw new Error(`Unsupported SLAM action: ${String(actionKind)}`)
+    const result = (await requestSlamAction(normalizedActionKind, payload) as unknown) as SlamSubmitJobResponse & {
+      raw?: Record<string, unknown>
     }
 
     recordAuditEvent({
       category: 'slam',
-      action: actionKind,
-      target: '/slam_workflow/*',
-      status: 'success',
-      message: 'SLAM action completed through the gateway.',
-      detail: (payload ?? {}) as Record<string, unknown>,
+      action: normalizedActionKind,
+      target: SLAM_SUBMIT_TARGET,
+      status: result.accepted ? 'success' : 'failed',
+      message: result.message || 'SLAM 动作已通过统一网关下发。',
+      detail: {
+        actionKind: normalizedActionKind,
+        jobId: result.jobId,
+        ...(payload ?? {}),
+      } as Record<string, unknown>,
     })
 
     return result
@@ -87,18 +46,22 @@ export async function runSlamAction(
     const normalizedError = normalizeGatewayError(error, {
       code: 'SLAM_ACTION_FAILED',
       source: 'slam-gateway',
-      message: 'SLAM action failed.',
+      message: 'SLAM 动作提交失败。',
       recoverable: true,
       requiresEngineer: true,
+      missingDependency: SLAM_SUBMIT_TARGET,
     })
 
     recordAuditEvent({
       category: 'slam',
-      action: actionKind,
-      target: '/slam_workflow/*',
+      action: normalizedActionKind,
+      target: SLAM_SUBMIT_TARGET,
       status: normalizedError.requiresEngineer ? 'blocked' : 'failed',
       message: normalizedError.message,
-      detail: (payload ?? {}) as Record<string, unknown>,
+      detail: {
+        actionKind: normalizedActionKind,
+        ...(payload ?? {}),
+      } as Record<string, unknown>,
     })
 
     throw normalizedError

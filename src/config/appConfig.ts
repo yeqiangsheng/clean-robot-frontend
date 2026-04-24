@@ -6,9 +6,6 @@ import type {
   UserRole,
 } from '../types/appShell'
 
-const FALLBACK_ROSBRIDGE_URL =
-  import.meta.env.VITE_ROSBRIDGE_URL ?? 'ws://127.0.0.1:9090'
-
 export const APP_MODULE_KEYS = [
   'overview',
   'workbench',
@@ -20,7 +17,7 @@ export const APP_MODULE_KEYS = [
   'actuator-control',
 ] as const satisfies readonly AppModuleKey[]
 
-export const USER_ROLES = ['operator', 'service', 'engineer'] as const satisfies readonly UserRole[]
+export const USER_ROLES = ['operator', 'service', 'engineer', 'admin'] as const satisfies readonly UserRole[]
 
 export const CAPABILITY_FLAGS = [
   'overview',
@@ -36,40 +33,6 @@ export const CAPABILITY_FLAGS = [
   'systemReadiness',
 ] as const satisfies readonly CapabilityFlag[]
 
-const DEFAULT_ROLE_POLICY: Record<UserRole, CapabilityFlag[]> = {
-  operator: [
-    'overview',
-    'taskManagement',
-    'scheduleManagement',
-    'executionControl',
-    'profileCatalog',
-    'systemReadiness',
-  ],
-  service: [
-    'overview',
-    'mapWorkbench',
-    'taskManagement',
-    'scheduleManagement',
-    'executionControl',
-    'runtimeMonitoring',
-    'profileCatalog',
-    'systemReadiness',
-  ],
-  engineer: [
-    'overview',
-    'mapWorkbench',
-    'taskManagement',
-    'scheduleManagement',
-    'executionControl',
-    'slamWorkbench',
-    'runtimeMonitoring',
-    'actuatorControl',
-    'chargingControl',
-    'profileCatalog',
-    'systemReadiness',
-  ],
-}
-
 const DEFAULT_ENABLED_MODULES: Record<AppModuleKey, boolean> = {
   overview: true,
   workbench: true,
@@ -82,43 +45,29 @@ const DEFAULT_ENABLED_MODULES: Record<AppModuleKey, boolean> = {
 }
 
 const DEFAULT_CONFIG: AppConfig = {
-  siteName: 'Clean Robot Frontend',
+  siteName: '清洁机器人商用站点',
   robotId: 'local_robot',
-  rosbridgeUrl: FALLBACK_ROSBRIDGE_URL,
-  quickRosbridgeUrls: [FALLBACK_ROSBRIDGE_URL],
+  apiBaseUrl: '/api',
   enabledModules: DEFAULT_ENABLED_MODULES,
-  rolePolicy: DEFAULT_ROLE_POLICY,
-  engineerUnlockMode: 'direct',
-  logRetentionDays: 14,
+  supportName: '现场支持',
 }
+
+const FORBIDDEN_BROWSER_CONFIG_FIELDS = [
+  'rosbridgeUrl',
+  'quickRosbridgeUrls',
+  'rolePolicy',
+  'engineerUnlockMode',
+  'engineerPasscode',
+] as const
 
 let currentConfig: AppConfig = DEFAULT_CONFIG
 
-function ensureRecord(
-  value: unknown,
-): value is Record<string, unknown> {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function appendIssue(
-  issues: AppConfigValidationIssue[],
-  field: string,
-  message: string,
-) {
+function appendIssue(issues: AppConfigValidationIssue[], field: string, message: string) {
   issues.push({ field, message })
-}
-
-function requireRecord(
-  value: unknown,
-  field: string,
-  issues: AppConfigValidationIssue[],
-) {
-  if (!ensureRecord(value)) {
-    appendIssue(issues, field, `${field} must be an object.`)
-    return null
-  }
-
-  return value
 }
 
 function validateNonEmptyString(
@@ -134,7 +83,7 @@ function validateNonEmptyString(
   return value.trim()
 }
 
-function validateWsUrl(
+function validateApiBaseUrl(
   value: unknown,
   field: string,
   issues: AppConfigValidationIssue[],
@@ -145,150 +94,48 @@ function validateWsUrl(
     return ''
   }
 
+  if (normalized.startsWith('/')) {
+    return normalized.replace(/\/+$/, '') || '/api'
+  }
+
   try {
     const parsed = new URL(normalized)
 
-    if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
-      appendIssue(issues, field, `${field} must use ws:// or wss://.`)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      appendIssue(issues, field, `${field} must use http://, https://, or a relative /api path.`)
       return ''
     }
 
-    return parsed.toString()
+    return parsed.toString().replace(/\/+$/, '')
   } catch {
-    appendIssue(issues, field, `${field} must be a valid websocket URL.`)
+    appendIssue(issues, field, `${field} must be a valid absolute URL or a relative /api path.`)
     return ''
   }
 }
 
-function validateStringList(
-  value: unknown,
-  field: string,
-  issues: AppConfigValidationIssue[],
-) {
-  if (!Array.isArray(value) || value.length === 0) {
-    appendIssue(issues, field, `${field} must be a non-empty array.`)
-    return [] as string[]
+function validateEnabledModules(value: unknown, issues: AppConfigValidationIssue[]) {
+  if (!isRecord(value)) {
+    appendIssue(issues, 'enabledModules', 'enabledModules must be an object.')
+    return { ...DEFAULT_ENABLED_MODULES }
   }
 
-  return value
-    .map((entry, index) => validateWsUrl(entry, `${field}[${index}]`, issues))
-    .filter((entry) => entry.length > 0)
-}
-
-function validatePositiveInteger(
-  value: unknown,
-  field: string,
-  issues: AppConfigValidationIssue[],
-) {
-  if (
-    typeof value !== 'number' ||
-    !Number.isFinite(value) ||
-    value < 1 ||
-    !Number.isInteger(value)
-  ) {
-    appendIssue(issues, field, `${field} must be a positive integer.`)
-    return 0
-  }
-
-  return value
-}
-
-function validateEnabledModules(
-  value: unknown,
-  issues: AppConfigValidationIssue[],
-) {
-  const record = requireRecord(value, 'enabledModules', issues)
-  const next = {} as Record<AppModuleKey, boolean>
+  const result = {} as Record<AppModuleKey, boolean>
 
   for (const moduleKey of APP_MODULE_KEYS) {
-    const rawValue = record?.[moduleKey]
-
-    if (typeof rawValue !== 'boolean') {
+    if (typeof value[moduleKey] !== 'boolean') {
       appendIssue(
         issues,
         `enabledModules.${moduleKey}`,
         `enabledModules.${moduleKey} must be a boolean.`,
       )
-      next[moduleKey] = DEFAULT_ENABLED_MODULES[moduleKey]
+      result[moduleKey] = DEFAULT_ENABLED_MODULES[moduleKey]
       continue
     }
 
-    next[moduleKey] = rawValue
+    result[moduleKey] = value[moduleKey] as boolean
   }
 
-  if (record) {
-    for (const key of Object.keys(record)) {
-      if (!APP_MODULE_KEYS.includes(key as AppModuleKey)) {
-        appendIssue(issues, `enabledModules.${key}`, `Unknown module key: ${key}.`)
-      }
-    }
-  }
-
-  return next
-}
-
-function validateRolePolicy(
-  value: unknown,
-  issues: AppConfigValidationIssue[],
-) {
-  const record = requireRecord(value, 'rolePolicy', issues)
-  const next = {} as Record<UserRole, CapabilityFlag[]>
-
-  for (const role of USER_ROLES) {
-    const rawList = record?.[role]
-
-    if (!Array.isArray(rawList)) {
-      appendIssue(issues, `rolePolicy.${role}`, `rolePolicy.${role} must be an array.`)
-      next[role] = DEFAULT_ROLE_POLICY[role]
-      continue
-    }
-
-    const capabilityList = rawList.flatMap((entry, index) => {
-      if (typeof entry !== 'string' || !CAPABILITY_FLAGS.includes(entry as CapabilityFlag)) {
-        appendIssue(
-          issues,
-          `rolePolicy.${role}[${index}]`,
-          `Unknown capability: ${String(entry)}.`,
-        )
-        return []
-      }
-
-      return [entry as CapabilityFlag]
-    })
-
-    if (capabilityList.length === 0) {
-      appendIssue(issues, `rolePolicy.${role}`, `rolePolicy.${role} must not be empty.`)
-      next[role] = DEFAULT_ROLE_POLICY[role]
-      continue
-    }
-
-    next[role] = Array.from(new Set(capabilityList))
-  }
-
-  if (record) {
-    for (const key of Object.keys(record)) {
-      if (!USER_ROLES.includes(key as UserRole)) {
-        appendIssue(issues, `rolePolicy.${key}`, `Unknown role key: ${key}.`)
-      }
-    }
-  }
-
-  return next
-}
-
-function validateEngineerUnlockMode(
-  value: unknown,
-  issues: AppConfigValidationIssue[],
-) {
-  if (value !== 'direct') {
-    appendIssue(
-      issues,
-      'engineerUnlockMode',
-      'engineerUnlockMode must be "direct" in the trial deployment.',
-    )
-  }
-
-  return 'direct' as const
+  return result
 }
 
 export class AppConfigValidationError extends Error {
@@ -303,29 +150,43 @@ export class AppConfigValidationError extends Error {
 
 export function normalizeConfig(value: unknown): AppConfig {
   const issues: AppConfigValidationIssue[] = []
-  const record = requireRecord(value, 'appConfig', issues)
 
-  const rosbridgeUrl = validateWsUrl(record?.rosbridgeUrl, 'rosbridgeUrl', issues)
-  const quickRosbridgeUrls = Array.from(
-    new Set([
-      rosbridgeUrl,
-      ...validateStringList(record?.quickRosbridgeUrls, 'quickRosbridgeUrls', issues),
-    ].filter((entry) => entry.length > 0)),
-  )
+  if (!isRecord(value)) {
+    throw new AppConfigValidationError('app-config.json must be a JSON object.', [
+      {
+        field: 'app-config.json',
+        message: 'app-config.json must be a JSON object.',
+      },
+    ])
+  }
+
+  for (const field of FORBIDDEN_BROWSER_CONFIG_FIELDS) {
+    if (field in value) {
+      appendIssue(
+        issues,
+        field,
+        `${field} belongs in site-gateway/site-config.json and must not be exposed through public/app-config.json.`,
+      )
+    }
+  }
 
   const config: AppConfig = {
-    siteName: validateNonEmptyString(record?.siteName, 'siteName', issues),
-    robotId: validateNonEmptyString(record?.robotId, 'robotId', issues),
-    rosbridgeUrl,
-    quickRosbridgeUrls,
-    enabledModules: validateEnabledModules(record?.enabledModules, issues),
-    rolePolicy: validateRolePolicy(record?.rolePolicy, issues),
-    engineerUnlockMode: validateEngineerUnlockMode(record?.engineerUnlockMode, issues),
-    logRetentionDays: validatePositiveInteger(
-      record?.logRetentionDays,
-      'logRetentionDays',
-      issues,
-    ),
+    siteName: validateNonEmptyString(value.siteName, 'siteName', issues),
+    robotId: validateNonEmptyString(value.robotId, 'robotId', issues),
+    apiBaseUrl: validateApiBaseUrl(value.apiBaseUrl, 'apiBaseUrl', issues),
+    enabledModules: validateEnabledModules(value.enabledModules, issues),
+    supportName:
+      typeof value.supportName === 'string' && value.supportName.trim()
+        ? value.supportName.trim()
+        : undefined,
+    supportPhone:
+      typeof value.supportPhone === 'string' && value.supportPhone.trim()
+        ? value.supportPhone.trim()
+        : undefined,
+    supportEmail:
+      typeof value.supportEmail === 'string' && value.supportEmail.trim()
+        ? value.supportEmail.trim()
+        : undefined,
   }
 
   if (issues.length > 0) {
@@ -374,15 +235,12 @@ export async function loadAppConfig() {
   try {
     payload = await response.json()
   } catch (error) {
-    throw new AppConfigValidationError(
-      'The local app-config.json file is not valid JSON.',
-      [
-        {
-          field: 'app-config.json',
-          message: error instanceof Error ? error.message : 'JSON parsing failed.',
-        },
-      ],
-    )
+    throw new AppConfigValidationError('The local app-config.json file is not valid JSON.', [
+      {
+        field: 'app-config.json',
+        message: error instanceof Error ? error.message : 'JSON parsing failed.',
+      },
+    ])
   }
 
   currentConfig = normalizeConfig(payload)
@@ -396,24 +254,16 @@ export function getAppConfig() {
 export function sanitizeAppConfig(config: AppConfig = currentConfig): AppConfig {
   return {
     ...config,
-    quickRosbridgeUrls: [...config.quickRosbridgeUrls],
     enabledModules: { ...config.enabledModules },
-    rolePolicy: Object.fromEntries(
-      USER_ROLES.map((role) => [role, [...(config.rolePolicy[role] ?? [])]]),
-    ) as AppConfig['rolePolicy'],
   }
 }
 
-export function getConfiguredRosbridgeUrl() {
-  return currentConfig.rosbridgeUrl || DEFAULT_CONFIG.rosbridgeUrl
+export function getApiBaseUrl() {
+  return currentConfig.apiBaseUrl || DEFAULT_CONFIG.apiBaseUrl
 }
 
-export function getConfiguredQuickRosbridgeUrls() {
-  return currentConfig.quickRosbridgeUrls
-}
-
-export function getDefaultRolePolicy() {
-  return currentConfig.rolePolicy
+export function getRosbridgeProxyPath() {
+  return '/ws/rosbridge'
 }
 
 export function isModuleEnabled(moduleKey: AppModuleKey) {
