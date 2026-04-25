@@ -133,7 +133,7 @@ npm.cmd run package:trial
 This produces a release directory like:
 
 ```text
-release/clean-robot-site-v0.0.0/
+release/clean-robot-site-v0.1.0-rc.1/
 ```
 
 The packaged bundle includes:

@@ -16,7 +16,7 @@
 - MapWorkbench: no-go area creation, coverage zone creation, coverage preview/path generation passed after backend coverage preview fix.
 - TaskManagement: task creation from the new coverage zone passed.
 - End-to-end field loop: create SLAM map -> switch/relocalize -> draw no-go and coverage zone -> generate path -> create task -> execute task passed.
-- Trial release package: `release/clean-robot-site-v0.0.0` was generated, production dependencies installed with `npm install --omit=dev`, and the packaged site gateway smoke-tested successfully on `http://127.0.0.1:4173`.
+- Trial release package: `release/clean-robot-site-v0.1.0-rc.1` is the current release-candidate output path. Production dependencies should install with `npm install --omit=dev`, and the packaged site gateway should be smoke-tested on `http://127.0.0.1:4173`.
 
 ## Frontend Fixes Confirmed During Validation
 

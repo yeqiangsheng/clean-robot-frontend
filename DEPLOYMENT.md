@@ -20,7 +20,7 @@ npm.cmd run package:trial
 发布产物会生成在：
 
 ```text
-release/clean-robot-site-v0.0.0
+release/clean-robot-site-v0.1.0-rc.1
 ```
 
 发布目录至少包含：
