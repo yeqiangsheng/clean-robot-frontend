@@ -133,7 +133,7 @@ npm.cmd run package:trial
 This produces a release directory like:
 
 ```text
-release/clean-robot-site-v0.1.0-rc.1/
+release/clean-robot-site-v0.1.0-rc.2/
 ```
 
 The packaged bundle includes:
@@ -146,6 +146,8 @@ The packaged bundle includes:
 - start/stop scripts
 - deployment and troubleshooting docs
 - `RELEASE-INFO.json`
+
+For robot-side Ubuntu 20.04 deployment, see [`docs/ubuntu20_robot_deployment.md`](docs/ubuntu20_robot_deployment.md). The recommended field topology is browser/tablet -> robot IP -> local Site Gateway -> robot-local rosbridge.
 
 ## Production Startup
 

@@ -26,10 +26,12 @@ const releaseStartCommand = 'node ./site-gateway/server.mjs --host 127.0.0.1 --p
 const runtimeDependencyNames = ['ws']
 const runtimeScriptNames = new Set([
   'install-site-service.ps1',
+  'install-site-systemd.sh',
   'manage-site-service.ps1',
   'rollback-site-release.ps1',
   'site-service-common.ps1',
   'uninstall-site-service.ps1',
+  'uninstall-site-systemd.sh',
   'upgrade-site-release.ps1',
 ])
 const forbiddenReleaseFilePatterns = [
@@ -48,7 +50,9 @@ const requiredPaths = [
   join(repoRoot, 'site-gateway', 'site-config.json'),
   join(repoRoot, 'public', 'app-config.json'),
   join(repoRoot, 'start-frontend-prod.cmd'),
+  join(repoRoot, 'start-frontend-prod.sh'),
   join(repoRoot, 'stop-frontend-prod.cmd'),
+  join(repoRoot, 'stop-frontend-prod.sh'),
   packageLockPath,
 ]
 
@@ -255,14 +259,29 @@ function assertCleanReleasePackage() {
   }
 }
 
+function normalizeLinuxScriptLineEndings() {
+  for (const filePath of collectReleaseFiles(releaseRoot)) {
+    if (!filePath.endsWith('.sh')) {
+      continue
+    }
+
+    const content = readFileSync(filePath, 'utf8')
+    writeFileSync(filePath, content.replaceAll('\r\n', '\n'))
+  }
+}
+
 const copyEntries = [
   ['dist', 'dist'],
   ['public', 'public'],
   ['site-gateway', 'site-gateway'],
   ['scripts', 'scripts'],
   ['start-frontend-prod.cmd', 'start-frontend-prod.cmd'],
+  ['start-frontend-prod.sh', 'start-frontend-prod.sh'],
   ['stop-frontend-prod.cmd', 'stop-frontend-prod.cmd'],
+  ['stop-frontend-prod.sh', 'stop-frontend-prod.sh'],
   ['DEPLOYMENT.md', 'DEPLOYMENT.md'],
+  ['docs/ubuntu20_robot_deployment.md', 'docs/ubuntu20_robot_deployment.md'],
+  [`docs/release_notes_${version}.md`, `docs/release_notes_${version}.md`],
   ['现场验收清单.md', '现场验收清单.md'],
   ['故障排查手册.md', '故障排查手册.md'],
   ['README.md', 'README.md'],
@@ -295,15 +314,22 @@ writeFileSync(
       packageName: packageJson.name,
       version,
       createdAt: new Date().toISOString(),
-      deploymentMode: 'windows-single-site',
+      deploymentMode: 'single-site-gateway',
       entryUrl: 'http://127.0.0.1:4173',
       startCommand: '.\\start-frontend-prod.cmd',
       stopCommand: '.\\stop-frontend-prod.cmd',
+      linuxEntryUrl: 'http://<robot-ip>:4173',
+      linuxStartCommand: './start-frontend-prod.sh',
+      linuxStopCommand: './stop-frontend-prod.sh',
       installCommand: 'npm.cmd install --omit=dev',
+      linuxInstallCommand: 'npm install --omit=dev',
       serviceInstallCommand:
         '.\\scripts\\install-site-service.ps1 -WinSwExePath C:\\path\\to\\WinSW.exe',
       serviceInstallWithRosbridgeCommand:
         '.\\scripts\\install-site-service.ps1 -WinSwExePath C:\\path\\to\\WinSW.exe -RosbridgeUrl ws://<robot-host>:9090',
+      linuxSystemdInstallCommand:
+        'sudo SITE_ROSBRIDGE_URL=ws://127.0.0.1:9090 ./scripts/install-site-systemd.sh',
+      linuxSystemdUninstallCommand: 'sudo ./scripts/uninstall-site-systemd.sh',
       serviceUninstallCommand: '.\\scripts\\uninstall-site-service.ps1',
       upgradeCommand:
         '.\\scripts\\upgrade-site-release.ps1 -InstallRoot C:\\CleanRobot\\site',
@@ -315,6 +341,7 @@ writeFileSync(
         'Field ROS addresses should be set with SITE_ROSBRIDGE_URL, -RosbridgeUrl, or deployed site-config.json.',
         'The site gateway proxies browser access to ROS through /ws/rosbridge.',
         'WinSW install and upgrade/rollback scripts are bundled under scripts/.',
+        'Ubuntu 20.04 robot-side systemd install scripts are bundled under scripts/.',
       ],
     },
     null,
@@ -322,6 +349,7 @@ writeFileSync(
   ),
 )
 
+normalizeLinuxScriptLineEndings()
 assertCleanReleasePackage()
 
 console.log(`Trial release packaged at: ${releaseRoot}`)

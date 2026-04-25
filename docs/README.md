@@ -9,6 +9,7 @@
 ## 联调与回归
 
 - [前端真机 Live 自动回归矩阵 v1](./frontend_live_regression_matrix_v1.md)
+- [Ubuntu 20.04 robot deployment](./ubuntu20_robot_deployment.md)
 
 ## 历史归档
 

@@ -69,10 +69,6 @@ const currentDocPatterns = [
     pattern: /(192\.168\.16\.11|10\.2\.0\.88|10\.0\.0\.157|10\.0\.0\.174)/,
   },
   {
-    label: 'browser-side rosbridge sample endpoint in current docs/config',
-    pattern: /ws:\/\/127\.0\.0\.1:9090/,
-  },
-  {
     label: 'browser-side rosbridge Vite env in current docs/config',
     pattern: /VITE_ROSBRIDGE_URL/,
   },
