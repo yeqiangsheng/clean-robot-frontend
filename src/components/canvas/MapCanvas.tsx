@@ -21,6 +21,7 @@ import type {
   OccupancyGrid,
   PathSet,
   Point2D,
+  Pose2D,
   RegionSet,
   ViewportTransform,
   WorkbenchEditorMode,
@@ -60,6 +61,7 @@ interface MapCanvasProps {
   selectedZonePath?: ZonePlanPathResult | null
   editableCorners?: Point2D[]
   editableWallEndpoints?: Point2D[]
+  robotPose?: Pose2D | null
   selected: WorkbenchSelection
   onCanvasPointPick?: (point: Point2D) => void
   onEditableCornerChange?: (cornerIndex: number, point: Point2D) => void
@@ -320,6 +322,7 @@ export function MapCanvas({
   selectedZonePath = null,
   editableCorners = [],
   editableWallEndpoints = [],
+  robotPose = null,
   selected,
   onCanvasPointPick,
   onEditableCornerChange,
@@ -435,6 +438,19 @@ export function MapCanvas({
 
   const mapClickBounds = occupancyBounds ?? rasterBounds
   const alignmentMarkerRadius = 6 / Math.max(viewport.scale, 1)
+  const inverseScale = 1 / Math.max(viewport.scale, 0.001)
+  const robotMarkerRadius = 12 * inverseScale
+  const robotStrokeWidth = 2 * inverseScale
+  const robotFaceRadius = 8.1 * inverseScale
+  const robotFaceOffsetY = -1.8 * inverseScale
+  const robotEyeRadius = 1.35 * inverseScale
+  const robotEyeOffsetX = 3.4 * inverseScale
+  const robotEyeOffsetY = 2.8 * inverseScale
+  const robotNoseRadius = 1.85 * inverseScale
+  const robotNoseOffsetY = -0.8 * inverseScale
+  const robotWhiskerStrokeWidth = 0.9 * inverseScale
+  const robotHeadingLength = 16 * inverseScale
+  const robotHeadingHalfWidth = 7 * inverseScale
 
   const zoomRange = useMemo(
     () => ({
@@ -1191,6 +1207,98 @@ export function MapCanvas({
                     strokeWidth={1 / Math.max(viewport.scale, 1)}
                   />
                 ))}
+              </Group>
+            ) : null}
+
+            {robotPose ? (
+              <Group listening={false}>
+                <Circle
+                  x={robotPose.x}
+                  y={robotPose.y}
+                  radius={robotMarkerRadius}
+                  fill="#1e9bed"
+                  stroke="rgba(8, 16, 23, 0.95)"
+                  strokeWidth={robotStrokeWidth * 0.9}
+                />
+                <Circle
+                  x={robotPose.x}
+                  y={robotPose.y + robotFaceOffsetY}
+                  radius={robotFaceRadius}
+                  fill="#f8fbff"
+                  stroke="rgba(8, 16, 23, 0.76)"
+                  strokeWidth={0.8 * inverseScale}
+                />
+                <Circle
+                  x={robotPose.x - robotEyeOffsetX}
+                  y={robotPose.y + robotEyeOffsetY}
+                  radius={robotEyeRadius}
+                  fill="#111820"
+                />
+                <Circle
+                  x={robotPose.x + robotEyeOffsetX}
+                  y={robotPose.y + robotEyeOffsetY}
+                  radius={robotEyeRadius}
+                  fill="#111820"
+                />
+                <Circle
+                  x={robotPose.x}
+                  y={robotPose.y + robotNoseOffsetY}
+                  radius={robotNoseRadius}
+                  fill="#ff3b30"
+                  stroke="#f8fbff"
+                  strokeWidth={0.45 * inverseScale}
+                />
+                {[
+                  [-7.4, 1.0, -2.6, -0.1],
+                  [-7.6, -1.5, -2.8, -1.2],
+                  [7.4, 1.0, 2.6, -0.1],
+                  [7.6, -1.5, 2.8, -1.2],
+                ].map(([x1, y1, x2, y2], index) => (
+                  <Line
+                    key={`robot-face-whisker-${index}`}
+                    points={[
+                      robotPose.x + x1 * inverseScale,
+                      robotPose.y + y1 * inverseScale,
+                      robotPose.x + x2 * inverseScale,
+                      robotPose.y + y2 * inverseScale,
+                    ]}
+                    stroke="#111820"
+                    strokeWidth={robotWhiskerStrokeWidth}
+                    strokeScaleEnabled={false}
+                    lineCap="round"
+                  />
+                ))}
+                {robotPose.theta !== null ? (
+                  <Line
+                    points={(() => {
+                      const directionX = Math.cos(robotPose.theta)
+                      const directionY = Math.sin(robotPose.theta)
+                      const normalX = -directionY
+                      const normalY = directionX
+                      const baseOffset = robotMarkerRadius * 0.94
+                      const tipOffset = robotMarkerRadius + robotHeadingLength
+                      const baseX = robotPose.x + directionX * baseOffset
+                      const baseY = robotPose.y + directionY * baseOffset
+                      const tipX = robotPose.x + directionX * tipOffset
+                      const tipY = robotPose.y + directionY * tipOffset
+
+                      return [
+                        tipX,
+                        tipY,
+                        baseX + normalX * robotHeadingHalfWidth,
+                        baseY + normalY * robotHeadingHalfWidth,
+                        baseX - normalX * robotHeadingHalfWidth,
+                        baseY - normalY * robotHeadingHalfWidth,
+                      ]
+                    })()}
+                    closed
+                    fill="#ff3b30"
+                    stroke="#ff3b30"
+                    strokeWidth={1 * inverseScale}
+                    strokeScaleEnabled={false}
+                    lineJoin="round"
+                  />
+                ) : null}
               </Group>
             ) : null}
           </Group>

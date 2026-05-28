@@ -1,12 +1,7 @@
 export function createReadQueryDependencyGroup(contract) {
-  const deprecatedFallback = getDeprecatedReadQueryFallback(contract)
-
   return {
     label: contract.canonical.serviceName,
-    probeNames: [
-      contract.canonical.serviceName,
-      ...(deprecatedFallback ? [deprecatedFallback.serviceName] : []),
-    ],
+    probeNames: [contract.canonical.serviceName],
     preferredServiceName: contract.canonical.serviceName,
   }
 }
@@ -49,34 +44,6 @@ export const PROFILE_CATALOG_QUERY_CONTRACT = {
     serviceName: '/database_server/app/profile_catalog_service',
     serviceType: 'cleanrobot_app_msgs/GetProfileCatalog',
   },
-}
-
-const DEPRECATED_READ_QUERY_FALLBACKS = {
-  'slam-status': {
-    serviceName: '/clean_robot_server/get_slam_status',
-    serviceType: 'my_msg_srv/GetSlamStatus',
-  },
-  'slam-job': {
-    serviceName: '/clean_robot_server/get_slam_job',
-    serviceType: 'my_msg_srv/GetSlamJob',
-  },
-  'odometry-status': {
-    serviceName: '/clean_robot_server/get_odometry_status',
-    serviceType: 'my_msg_srv/GetOdometryStatus',
-  },
-  'system-readiness': {
-    serviceName: '/coverage_task_manager/get_system_readiness',
-    serviceType: 'my_msg_srv/GetSystemReadiness',
-  },
-  'profile-catalog': {
-    serviceName: '/database_server/profile_catalog_service',
-    serviceType: 'my_msg_srv/GetProfileCatalog',
-  },
-}
-
-export function getDeprecatedReadQueryFallback(contractOrKey) {
-  const key = typeof contractOrKey === 'string' ? contractOrKey : contractOrKey?.key
-  return key ? DEPRECATED_READ_QUERY_FALLBACKS[key] ?? null : null
 }
 
 export const SLAM_STATUS_SERVICE_DEPENDENCY =

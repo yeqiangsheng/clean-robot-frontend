@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   fetchCoverageZoneDetail,
   fetchCoverageZones,
-} from '../api/gateway/robotGateway'
+} from '../api/gateway/mapWorkbenchGateway'
 import { useRosConnection } from './useRosConnection'
 import type { ZoneCatalogEntry } from '../types/zoneCatalog'
 import type { ZoneCatalogAvailability } from '../types/zoneCatalog'
@@ -113,7 +113,6 @@ export function useCoverageZoneCatalog({
       'coverage-zone-catalog',
       'enabled',
       normalizedMapName || 'no-map',
-      snapshot.url,
       snapshot.sessionId,
     ],
     queryFn: () => fetchCoverageZones(null, normalizedMapName),
@@ -139,7 +138,6 @@ export function useCoverageZoneCatalog({
       'historical',
       normalizedMapName || 'no-map',
       missingSelectedZoneIds.join(',') || 'none',
-      snapshot.url,
       snapshot.sessionId,
     ],
     queryFn: async () => {

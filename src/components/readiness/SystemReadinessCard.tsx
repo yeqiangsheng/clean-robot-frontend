@@ -469,22 +469,24 @@ function SystemReadinessCardBody({
       }
     >
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-        <Descriptions column={compact ? 1 : 2} size="small" colon={false}>
-          <Descriptions.Item label="检查对象">{selectedTaskLabel}</Descriptions.Item>
-          <Descriptions.Item label="主题消息数">{topicSnapshot.messageCount}</Descriptions.Item>
-          <Descriptions.Item label="服务调用">
-            {getServiceStatusLabel({
-              isLoading: serviceQuery.isLoading,
-              dataSuccess: serviceQuery.data ? serviceQuery.data.success : null,
-              hasError: serviceQuery.error instanceof Error,
-            })}
-          </Descriptions.Item>
-          <Descriptions.Item label="主题状态">{topicPresentation.label}</Descriptions.Item>
-          <Descriptions.Item label="运行态范围">{topicScopeLabel}</Descriptions.Item>
-          <Descriptions.Item label="最后更新时间">
-            {formatTimestamp(lastUpdatedValue)}
-          </Descriptions.Item>
-        </Descriptions>
+        {!compact ? (
+          <Descriptions column={2} size="small" colon={false}>
+            <Descriptions.Item label="检查对象">{selectedTaskLabel}</Descriptions.Item>
+            <Descriptions.Item label="主题消息数">{topicSnapshot.messageCount}</Descriptions.Item>
+            <Descriptions.Item label="服务调用">
+              {getServiceStatusLabel({
+                isLoading: serviceQuery.isLoading,
+                dataSuccess: serviceQuery.data ? serviceQuery.data.success : null,
+                hasError: serviceQuery.error instanceof Error,
+              })}
+            </Descriptions.Item>
+            <Descriptions.Item label="主题状态">{topicPresentation.label}</Descriptions.Item>
+            <Descriptions.Item label="运行态范围">{topicScopeLabel}</Descriptions.Item>
+            <Descriptions.Item label="最后更新时间">
+              {formatTimestamp(lastUpdatedValue)}
+            </Descriptions.Item>
+          </Descriptions>
+        ) : null}
 
         {serviceQuery.error instanceof Error ? (
           <AppFeedbackBanner
@@ -502,7 +504,7 @@ function SystemReadinessCardBody({
           />
         ) : null}
 
-        {topicSnapshot.health === 'disconnected' ? (
+        {!compact && topicSnapshot.health === 'disconnected' ? (
           <AppFeedbackBanner
             tone="error"
             title="ROS 已断开"
@@ -510,7 +512,7 @@ function SystemReadinessCardBody({
           />
         ) : null}
 
-        {topicSnapshot.health === 'waiting' ? (
+        {!compact && topicSnapshot.health === 'waiting' ? (
           <AppFeedbackBanner
             tone="info"
             title="等待实时 readiness 首帧"
@@ -518,7 +520,7 @@ function SystemReadinessCardBody({
           />
         ) : null}
 
-        {topicSnapshot.health === 'unavailable' ? (
+        {!compact && topicSnapshot.health === 'unavailable' ? (
           <AppFeedbackBanner
             tone="info"
             title="实时 readiness 主题暂未发布"
@@ -529,7 +531,7 @@ function SystemReadinessCardBody({
           />
         ) : null}
 
-        {topicSnapshot.health === 'stale' ? (
+        {!compact && topicSnapshot.health === 'stale' ? (
           <AppFeedbackBanner
             tone="warning"
             title="实时 readiness 已延迟"
@@ -537,7 +539,7 @@ function SystemReadinessCardBody({
           />
         ) : null}
 
-        {topicSnapshot.readiness && !topicMatchesTask && taskId > 0 ? (
+        {!compact && topicSnapshot.readiness && !topicMatchesTask && taskId > 0 ? (
           <AppFeedbackBanner
             tone="info"
             title="实时 readiness 属于其他任务"
@@ -548,85 +550,117 @@ function SystemReadinessCardBody({
         {effectiveReadiness ? (
           <>
             <Descriptions column={compact ? 1 : 2} size="small" colon={false}>
-              <Descriptions.Item label="总体就绪">
-                {getBooleanTag(effectiveReadiness.overallReady, '就绪', '未就绪')}
-              </Descriptions.Item>
-              <Descriptions.Item label="允许启动">
-                {isSystemOnlyScope ? (
-                  <Tag color="blue">N/A</Tag>
-                ) : (
-                  getBooleanTag(effectiveReadiness.canStartTask, '允许', '阻断')
-                )}
-              </Descriptions.Item>
-              <Descriptions.Item label="阻断项">
-                <Tag color={blockingChecks.length > 0 ? 'red' : 'green'}>
-                  {blockingChecks.length}
-                </Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="非阻塞 warning">
-                <Tag
-                  color={
-                    nonBlockingWarningChecks.length > 0 || warningText.length > 0
-                      ? 'orange'
-                      : 'green'
-                  }
-                >
-                  {nonBlockingWarningChecks.length + warningText.length}
-                </Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="任务名称">
-                {effectiveReadiness.taskName || selectedTask?.name || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label="任务地图">
-                {effectiveReadiness.taskMapName || selectedTask?.mapName || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label="任务区域">
-                {effectiveReadiness.taskZoneId || selectedTask?.zoneId || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label="规划模板">
-                {effectiveReadiness.taskPlanProfile || selectedTask?.planProfileName || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label="当前激活地图">
-                {effectiveReadiness.activeMapName || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label="运行时地图">
-                {effectiveReadiness.runtimeMapName || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label="任务管理状态">
-                {effectiveReadiness.missionState || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label="执行器状态">
-                {effectiveReadiness.executorState || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label="阶段">{effectiveReadiness.phase || '--'}</Descriptions.Item>
-              <Descriptions.Item label="对外状态">
-                {effectiveReadiness.publicState || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label="补给/回桩状态">
-                {effectiveReadiness.dockSupplyState || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label="电量">
-                {formatPercent(effectiveReadiness.batterySoc)}
-              </Descriptions.Item>
-              <Descriptions.Item label="电池数据有效">
-                {effectiveReadiness.batteryValid === null
-                  ? '--'
-                  : effectiveReadiness.batteryValid
-                    ? '有效'
-                    : '无效'}
-              </Descriptions.Item>
-              <Descriptions.Item label="检查时间">
-                {formatTimestamp(effectiveReadiness.stampMs)}
-              </Descriptions.Item>
+              {compact ? (
+                <>
+                  <Descriptions.Item label="检查对象">{selectedTaskLabel}</Descriptions.Item>
+                  <Descriptions.Item label="允许启动">
+                    {isSystemOnlyScope ? (
+                      <Tag color="blue">N/A</Tag>
+                    ) : (
+                      getBooleanTag(effectiveReadiness.canStartTask, '允许', '阻断')
+                    )}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="阻断项">
+                    <Tag color={blockingChecks.length > 0 ? 'red' : 'green'}>
+                      {blockingChecks.length}
+                    </Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="任务管理状态">
+                    {effectiveReadiness.missionState || '--'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="执行器状态">
+                    {effectiveReadiness.executorState || '--'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="电量">
+                    {formatPercent(effectiveReadiness.batterySoc)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="检查时间">
+                    {formatTimestamp(lastUpdatedValue)}
+                  </Descriptions.Item>
+                </>
+              ) : (
+                <>
+                  <Descriptions.Item label="总体就绪">
+                    {getBooleanTag(effectiveReadiness.overallReady, '就绪', '未就绪')}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="允许启动">
+                    {isSystemOnlyScope ? (
+                      <Tag color="blue">N/A</Tag>
+                    ) : (
+                      getBooleanTag(effectiveReadiness.canStartTask, '允许', '阻断')
+                    )}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="阻断项">
+                    <Tag color={blockingChecks.length > 0 ? 'red' : 'green'}>
+                      {blockingChecks.length}
+                    </Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="非阻塞 warning">
+                    <Tag
+                      color={
+                        nonBlockingWarningChecks.length > 0 || warningText.length > 0
+                          ? 'orange'
+                          : 'green'
+                      }
+                    >
+                      {nonBlockingWarningChecks.length + warningText.length}
+                    </Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="任务名称">
+                    {effectiveReadiness.taskName || selectedTask?.name || '--'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="任务地图">
+                    {effectiveReadiness.taskMapName || selectedTask?.mapName || '--'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="任务区域">
+                    {effectiveReadiness.taskZoneId || selectedTask?.zoneId || '--'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="规划模板">
+                    {effectiveReadiness.taskPlanProfile || selectedTask?.planProfileName || '--'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="当前激活地图">
+                    {effectiveReadiness.activeMapName || '--'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="运行时地图">
+                    {effectiveReadiness.runtimeMapName || '--'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="任务管理状态">
+                    {effectiveReadiness.missionState || '--'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="执行器状态">
+                    {effectiveReadiness.executorState || '--'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="阶段">{effectiveReadiness.phase || '--'}</Descriptions.Item>
+                  <Descriptions.Item label="对外状态">
+                    {effectiveReadiness.publicState || '--'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="补给/回桩状态">
+                    {effectiveReadiness.dockSupplyState || '--'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="电量">
+                    {formatPercent(effectiveReadiness.batterySoc)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="电池数据有效">
+                    {effectiveReadiness.batteryValid === null
+                      ? '--'
+                      : effectiveReadiness.batteryValid
+                        ? '有效'
+                        : '无效'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="检查时间">
+                    {formatTimestamp(effectiveReadiness.stampMs)}
+                  </Descriptions.Item>
+                </>
+              )}
             </Descriptions>
 
-            {isSystemOnlyScope ? (
+            {!compact && isSystemOnlyScope ? (
               <AppFeedbackBanner
                 tone="info"
                 title="当前只是在看系统基线"
                 description="这份结果只反映地图、定位、执行器等站点级基线状态，还不能代表某个具体任务一定允许 START。请选择任务后再做正式启动检查。"
               />
-            ) : !effectiveReadiness.canStartTask ? (
+            ) : !compact && !effectiveReadiness.canStartTask ? (
               <AppFeedbackBanner
                 tone="error"
                 title="存在阻断启动的问题"
@@ -636,15 +670,15 @@ function SystemReadinessCardBody({
                     : '后端返回 can_start_task=false，但没有附带更详细的阻断原因。'
                 }
               />
-            ) : (
+            ) : !compact ? (
               <AppFeedbackBanner
                 tone="success"
                 title="当前任务已通过启动前检查"
                 description="当前 can_start_task=true。真正点击 START 时，前端仍会再主动刷新一次 readiness，并显示执行服务的原始返回。"
               />
-            )}
+            ) : null}
 
-            {warningText.length > 0 ? (
+            {!compact && warningText.length > 0 ? (
               <AppFeedbackBanner
                 tone="warning"
                 title="非阻塞 warning"

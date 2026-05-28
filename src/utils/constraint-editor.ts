@@ -1,9 +1,9 @@
-import type {
+﻿import type {
   PathSet,
   Point2D,
   VirtualWallDraft,
 } from '../types/map-editor'
-import type { RosServiceRequest } from '../types/ros'
+import type { GatewayPayload } from '../types/gateway'
 
 function getPrimaryPath(pathSet: PathSet | null) {
   const path = pathSet?.[0] ?? []
@@ -15,7 +15,7 @@ function getPrimaryPath(pathSet: PathSet | null) {
   return path.slice(0, 2)
 }
 
-export function buildWallPathRequest(pathSet: PathSet | null): RosServiceRequest | null {
+export function buildWallPathRequest(pathSet: PathSet | null): GatewayPayload | null {
   const path = getPrimaryPath(pathSet)
 
   if (path.length < 2) {

@@ -1,4 +1,4 @@
-import { Button, Card, Space, Tag, Typography } from 'antd'
+import { Button, Card, Space, Typography } from 'antd'
 
 import { AppEmptyState } from '../feedback/AppEmptyState'
 import { AppFeedbackBanner } from '../feedback/AppFeedbackBanner'
@@ -37,28 +37,13 @@ export function NoGoEditorToolbar({
   const isEditing = mode === 'editing-no-go'
 
   return (
-    <Card
-      title="禁入区编辑"
-      className="workbench-card"
-      extra={
-        isEditing ? (
-          <Tag color="processing">编辑中</Tag>
-        ) : isCreating ? (
-          <Tag color="warning">新建中</Tag>
-        ) : (
-          <Tag>空闲</Tag>
-        )
-      }
-    >
+    <Card title="禁入区编辑" className="workbench-card">
       {!hasMap ? (
         <AppEmptyState description="请先加载地图或工作区图层，再开始创建禁入区。" />
       ) : null}
 
       {hasMap && !isCreating && !isEditing ? (
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-          <Typography.Paragraph className="workbench-footnote zone-editor-note">
-            当前工具只支持矩形禁入区。画布草稿用于本地编辑预览，最终以后端保存后的几何为准。
-          </Typography.Paragraph>
           <Button type="primary" onClick={onStart} disabled={disableStart}>
             新建禁入区
           </Button>
@@ -78,13 +63,6 @@ export function NoGoEditorToolbar({
 
           <div className="zone-editor-status">
             <Typography.Text strong>{isEditing ? '正在编辑禁入区' : '正在新建禁入区'}</Typography.Text>
-            <Typography.Text type="secondary">
-              {isEditing
-                ? '请在画布上拖拽矩形角点，确认边界合适后再保存。'
-                : rectPoints.length === 0
-                  ? '请先在画布上选择第一个角点。'
-                  : '请再选择一个对角点，完成本次矩形草稿。'}
-            </Typography.Text>
             {!isEditing ? (
               <Typography.Text code>
                 点 1 {formatPoint(rectPoints[0])}

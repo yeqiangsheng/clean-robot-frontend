@@ -1,0 +1,57 @@
+.execution-progress-card {
+  min-width: 0;
+}
+
+.execution-progress-card .ant-card-head,
+.execution-progress-card .ant-card-body {
+  min-width: 0;
+}
+
+.execution-progress-panel {
+  padding: 6px 0 2px;
+}
+
+.execution-progress-inline {
+  min-width: 0;
+}
+
+.execution-progress-inline .ant-progress {
+  margin-bottom: 0;
+}
+
+.execution-progress-inline .ant-progress-bg,
+.execution-progress-inline .ant-progress-success-bg {
+  height: 8px !important;
+  border-radius: 999px;
+}
+
+.execution-progress-circle-panel {
+  display: flex;
+  min-height: 236px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.execution-progress-circle-caption {
+  max-width: 100%;
+  color: rgba(36, 43, 46, 0.68);
+  font-weight: 700;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.execution-progress-details-card .ant-descriptions-item-label {
+  color: rgba(36, 43, 46, 0.56);
+}
+
+@media (max-width: 760px) {
+  .execution-progress-card .ant-descriptions-view table,
+  .execution-progress-card .ant-descriptions-view tbody,
+  .execution-progress-card .ant-descriptions-row,
+  .execution-progress-card .ant-descriptions-item {
+    display: block;
+    width: 100%;
+  }
+}

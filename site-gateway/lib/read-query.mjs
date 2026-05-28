@@ -1,5 +1,3 @@
-import { getDeprecatedReadQueryFallback } from './read-query-contracts.mjs'
-
 function normalizeError(error, fallbackMessage) {
   if (error instanceof Error) {
     return error
@@ -12,27 +10,17 @@ function normalizeError(error, fallbackMessage) {
   return new Error(fallbackMessage)
 }
 
-export async function callAppFirstReadQueryService(gateway, options) {
-  let fallbackReason = ''
-  let appPayload = null
+export async function callAppReadQueryService(gateway, options) {
   const { canonical } = options.contract
-  const deprecatedFallback = getDeprecatedReadQueryFallback(options.contract)
 
   try {
-    appPayload = await gateway.callService({
+    const payload = await gateway.callService({
       serviceName: canonical.serviceName,
       serviceType: canonical.serviceType,
       request: options.request,
     })
-  } catch (error) {
-    fallbackReason = normalizeError(
-      error,
-      `Canonical query ${canonical.serviceName} failed.`,
-    ).message
-  }
 
-  if (!fallbackReason && appPayload) {
-    const decision = options.evaluateAppResponse(appPayload)
+    const decision = options.evaluateResponse(payload)
 
     if (decision.kind === 'success') {
       return decision.value
@@ -42,34 +30,11 @@ export async function callAppFirstReadQueryService(gateway, options) {
       throw decision.error
     }
 
-    fallbackReason = decision.reason
-  }
-
-  if (!deprecatedFallback) {
     throw new Error(
-      fallbackReason ||
+      decision.reason ||
         `Canonical query ${canonical.serviceName} returned no usable payload.`,
     )
-  }
-
-  try {
-    const payload = await gateway.callService({
-      serviceName: deprecatedFallback.serviceName,
-      serviceType: deprecatedFallback.serviceType,
-      request: options.request,
-    })
-
-    return options.mapLegacyResponse(payload)
   } catch (error) {
-    const normalizedLegacyError = normalizeError(
-      error,
-      `Deprecated fallback query ${deprecatedFallback.serviceName} failed.`,
-    )
-
-    if (fallbackReason) {
-      normalizedLegacyError.message = `${normalizedLegacyError.message} (app fallback reason: ${fallbackReason})`
-    }
-
-    throw normalizedLegacyError
+    throw normalizeError(error, `Canonical query ${canonical.serviceName} failed.`)
   }
 }

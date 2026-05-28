@@ -6,6 +6,7 @@ export type AppModuleKey =
   | 'tasks'
   | 'schedules'
   | 'execution'
+  | 'dock-calibration'
   | 'slam'
   | 'runtime'
   | 'actuator-control'
@@ -20,6 +21,7 @@ export type CapabilityFlag =
   | 'runtimeMonitoring'
   | 'actuatorControl'
   | 'chargingControl'
+  | 'dockCalibration'
   | 'profileCatalog'
   | 'systemReadiness'
 

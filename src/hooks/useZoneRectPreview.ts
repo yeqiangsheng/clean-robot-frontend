@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 
-import { previewRectZoneByPoints } from '../api/gateway/robotGateway'
+import { previewRectZoneByPoints } from '../api/gateway/mapWorkbenchGateway'
 import { useZoneEditorStore } from '../stores/zoneEditorStore'
 import type { MapAlignment, MapEntity, Point2D } from '../types/map-editor'
 

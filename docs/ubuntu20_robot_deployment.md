@@ -47,7 +47,17 @@ cd /opt/clean-robot-site/current
 npm install --omit=dev
 ```
 
-If this is a fresh robot and the local Site Gateway SQLite user database is empty, add site-specific `bootstrapUsers` to `site-gateway/site-config.json` before first start. Do not use placeholder passwords such as `change-me-*`.
+The release ships three factory bootstrap users for fresh robot commissioning: `operator`, `service`, and `engineer`. The initial password for these three users is `bulibusan1314`. Before customer delivery, decide whether to keep these accounts or replace the passwords in `site-gateway/site-config.json`.
+
+`bootstrapUsers` is synchronized at gateway startup. If a user already exists, the role and password from `site-config.json` will overwrite the local SQLite record for the same username. Do not commit customer-specific passwords back to the source repository.
+
+By default the release also sets:
+
+```json
+"clearSessionsOnStartup": true
+```
+
+This clears all old login sessions whenever the Site Gateway starts. After a robot power cycle, the touch screen should return to the frontend login page instead of restoring the previous authenticated page. Set this to `false` only for controlled internal debugging where session persistence across gateway restarts is explicitly required.
 
 ## Manual Start
 
@@ -101,12 +111,98 @@ Uninstall the systemd service without deleting release files:
 sudo ./scripts/uninstall-site-systemd.sh
 ```
 
+## Touch Screen Kiosk Mode
+
+The commercial robot touch screen should boot into the frontend without requiring an operator to type the Ubuntu desktop password.
+
+Use the robot-local frontend URL for the kiosk browser:
+
+```text
+http://127.0.0.1:4173/
+```
+
+Enable automatic login for the touch-screen desktop user. On GDM3 this is usually configured in:
+
+```text
+/etc/gdm3/custom.conf
+```
+
+Example:
+
+```ini
+[daemon]
+AutomaticLoginEnable=true
+AutomaticLogin=<touchscreen-user>
+```
+
+Create a user autostart entry:
+
+```text
+~/.config/autostart/clean-robot-kiosk.desktop
+```
+
+Example:
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=Clean Robot Kiosk
+Exec=/home/<touchscreen-user>/.local/bin/clean-robot-kiosk.sh
+X-GNOME-Autostart-enabled=true
+```
+
+Recommended kiosk launcher:
+
+```bash
+#!/usr/bin/env bash
+set -e
+
+until curl -fsS http://127.0.0.1:4173/api/health >/dev/null; do
+  sleep 2
+done
+
+xset s off -dpms 2>/dev/null || true
+
+chromium-browser \
+  --kiosk http://127.0.0.1:4173/ \
+  --no-first-run \
+  --disable-session-crashed-bubble \
+  --disable-infobars \
+  --password-store=basic \
+  --user-data-dir="$HOME/.config/clean-robot-kiosk-chromium"
+```
+
+If the robot image uses `chromium` or `google-chrome` instead of `chromium-browser`, replace the executable name only.
+
+`--password-store=basic` and the dedicated `--user-data-dir` avoid coupling the kiosk browser to the desktop user's GNOME keyring. If Ubuntu still shows "login keyring was not unlocked" after auto-login, reset or recreate the current user's login keyring with an empty password. Do not solve this by granting passwordless sudo to the touch-screen user.
+
+If NoMachine update prompts appear at boot, disable the NoMachine update autostart entry while keeping the NoMachine server installed for remote maintenance.
+
+To temporarily exit kiosk for maintenance:
+
+```bash
+pkill -f clean-robot-kiosk.sh || true
+pkill -f "chromium.*--kiosk" || true
+pkill -f "chrome.*--kiosk" || true
+```
+
+To disable kiosk on the next boot:
+
+```bash
+mv ~/.config/autostart/clean-robot-kiosk.desktop ~/.config/autostart/clean-robot-kiosk.desktop.disabled
+```
+
+Restore it by renaming the file back to `clean-robot-kiosk.desktop`.
+
 ## Release Health Criteria
 
 - `/api/health` returns `status=ok`.
 - `/api/health` returns `version=0.1.0-rc.2` for this release candidate.
 - `ros.status=connected` when rosbridge is online on the configured URL.
 - The top UI connection badges show Gateway online and ROS connected.
+- The touch screen boots directly into the frontend kiosk without Ubuntu password prompts.
+- After a robot power cycle, the frontend shows the login page instead of restoring the previous authenticated session.
+- The 10.1 inch 1280x800 operator overview fits in one screen without page scrolling.
 
 If `ros.status=closed`, first check rosbridge on the robot:
 

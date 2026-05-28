@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 
-import { fetchGatewaySlamJobTopicSnapshot } from '../api/gateway/siteGatewayClient'
-import { getSlamJob } from '../api/gateway/robotGateway'
+import { fetchGatewaySlamJobTopicSnapshot } from '../api/gateway/siteGatewayStatusClient'
+import { getSlamJob } from '../api/gateway/robotStatusGateway'
 import {
   SLAM_WORKFLOW_JOB_TOPIC_TYPE,
   SLAM_WORKFLOW_TOPIC_STALE_AFTER_MS,
-} from '../api/ros/slamWorkflowTopics'
+} from '../api/contracts/slamWorkflowTopicConfig'
 import { useSlamWorkbenchStore } from '../stores/slamWorkbenchStore'
 import type { RosConnectionSnapshot } from '../types/ros'
 import type {
@@ -48,7 +48,7 @@ export function useSlamWorkflowJob(snapshot: RosConnectionSnapshot) {
   const [clock, setClock] = useState(() => Date.now())
 
   const jobQuery = useQuery({
-    queryKey: ['slam-job', activeJobId, snapshot.url, snapshot.sessionId],
+    queryKey: ['slam-job', activeJobId, snapshot.sessionId],
     queryFn: () => getSlamJob(activeJobId),
     enabled: servicesReady && !useMockState && activeJobId.trim().length > 0,
     retry: false,

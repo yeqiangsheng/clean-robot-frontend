@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 
-import { fetchGatewaySystemReadinessTopicSnapshot } from '../api/gateway/siteGatewayClient'
-import { getSystemReadiness } from '../api/gateway/robotGateway'
+import { fetchGatewaySystemReadinessTopicSnapshot } from '../api/gateway/siteGatewayStatusClient'
+import { getSystemReadiness } from '../api/gateway/robotStatusGateway'
 import {
   SYSTEM_READINESS_TOPIC_NAME,
   SYSTEM_READINESS_TOPIC_TYPE,
-} from '../api/ros/queryContracts'
+} from '../api/contracts/queryContracts'
 import type { RosConnectionSnapshot } from '../types/ros'
 import type {
   SystemReadiness,
@@ -88,7 +88,7 @@ export function useSystemReadiness(
   const [clock, setClock] = useState(0)
 
   const serviceQuery = useQuery({
-    queryKey: ['system-readiness', taskId, snapshot.url, snapshot.sessionId],
+    queryKey: ['system-readiness', taskId, snapshot.sessionId],
     queryFn: () => getSystemReadiness(taskId),
     enabled: servicesReady,
     retry: false,

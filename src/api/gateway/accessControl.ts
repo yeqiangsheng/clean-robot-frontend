@@ -2,21 +2,16 @@ import { useAppShellStore } from '../../stores/appShellStore'
 import type { CapabilityFlag, GatewayErrorShape, UserRole } from '../../types/appShell'
 
 const DEFAULT_ROLE_CAPABILITIES: Record<UserRole, CapabilityFlag[]> = {
-  operator: [
-    'overview',
-    'taskManagement',
-    'scheduleManagement',
-    'executionControl',
-    'profileCatalog',
-    'systemReadiness',
-  ],
+  operator: ['overview'],
   service: [
     'overview',
     'mapWorkbench',
     'taskManagement',
     'scheduleManagement',
     'executionControl',
+    'dockCalibration',
     'runtimeMonitoring',
+    'slamWorkbench',
     'profileCatalog',
     'systemReadiness',
   ],
@@ -26,6 +21,7 @@ const DEFAULT_ROLE_CAPABILITIES: Record<UserRole, CapabilityFlag[]> = {
     'taskManagement',
     'scheduleManagement',
     'executionControl',
+    'dockCalibration',
     'slamWorkbench',
     'runtimeMonitoring',
     'actuatorControl',
@@ -39,6 +35,7 @@ const DEFAULT_ROLE_CAPABILITIES: Record<UserRole, CapabilityFlag[]> = {
     'taskManagement',
     'scheduleManagement',
     'executionControl',
+    'dockCalibration',
     'slamWorkbench',
     'runtimeMonitoring',
     'actuatorControl',
@@ -93,7 +90,8 @@ export function assertCapabilityAllowed(capability: CapabilityFlag, actionLabel:
     requiresEngineer:
       capability === 'slamWorkbench' ||
       capability === 'actuatorControl' ||
-      capability === 'chargingControl',
+      capability === 'chargingControl' ||
+      capability === 'dockCalibration',
   })
 }
 

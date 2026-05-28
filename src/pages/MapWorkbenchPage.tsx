@@ -6,40 +6,39 @@ import {
   Card,
   Descriptions,
   Form,
-  Input,
   Modal,
-  Popconfirm,
   Space,
-  Switch,
-  Tag,
   Typography,
 } from 'antd'
 import {
-  ApartmentOutlined,
-  ClusterOutlined,
   MenuOutlined,
   ProfileOutlined,
-  RadarChartOutlined,
 } from '@ant-design/icons'
 
 import { MapCanvas } from '../components/canvas/MapCanvas'
 import { AppEmptyState } from '../components/feedback/AppEmptyState'
 import { AppFeedbackBanner } from '../components/feedback/AppFeedbackBanner'
 import { AppLoadingState } from '../components/feedback/AppLoadingState'
+import { MapAssetPanel } from '../components/map-workbench/MapAssetPanel'
+import { MapWorkbenchDetailsPanel } from '../components/map-workbench/MapWorkbenchDetailsPanel'
+import {
+  CurrentMapCard,
+  LayerVisibilityCard,
+  ZoneFocusCard,
+} from '../components/map-workbench/MapWorkbenchSideCards'
+import { ObjectListCard } from '../components/map-workbench/ObjectListCard'
 import { NoGoEditorPanel } from '../components/constraint-editor/NoGoEditorPanel'
 import { NoGoEditorToolbar } from '../components/constraint-editor/NoGoEditorToolbar'
-import { NoGoDetailsPanel } from '../components/constraint-editor/NoGoDetailsPanel'
-import { RosbridgeEndpointControl } from '../components/ros/RosbridgeEndpointControl'
-import { VirtualWallDetailsPanel } from '../components/wall-editor/VirtualWallDetailsPanel'
 import { VirtualWallEditorPanel } from '../components/wall-editor/VirtualWallEditorPanel'
 import { VirtualWallEditorToolbar } from '../components/wall-editor/VirtualWallEditorToolbar'
 import { ZoneEditorToolbar } from '../components/zone-editor/ZoneEditorToolbar'
 import { ZonePreviewPanel } from '../components/zone-editor/ZonePreviewPanel'
 import { useInputCapabilities } from '../hooks/useInputCapabilities'
+import { useMapCatalog } from '../hooks/useMapCatalog'
 import { useMapWorkbenchData } from '../hooks/useMapWorkbenchData'
 import { useProfileCatalog } from '../hooks/useProfileCatalog'
-import { useRosDebug } from '../hooks/useRosDebug'
 import { useRosConnection } from '../hooks/useRosConnection'
+import { useSlamWorkflowState } from '../hooks/useSlamWorkflowState'
 import { useZoneCommit } from '../hooks/useZoneCommit'
 import { useZonePreview } from '../hooks/useZonePreview'
 import { useZoneRectPreview } from '../hooks/useZoneRectPreview'
@@ -54,27 +53,29 @@ import {
   fetchNoGoAreaDetail,
   fetchVirtualWallDetail,
   checkMapImportPreflight,
+  cleanupDisabledMapAssets,
+  hardDeleteMapAsset,
   importCurrentMapAsset,
   modifyNoGoArea,
   modifyVirtualWall,
-} from '../api/gateway/robotGateway'
+  softDeleteMapAsset,
+} from '../api/gateway/mapWorkbenchGateway'
 import { useConstraintEditorStore } from '../stores/constraintEditorStore'
 import { useMapWorkbenchStore } from '../stores/mapWorkbenchStore'
 import { useZoneEditorStore } from '../stores/zoneEditorStore'
-import type { GatewayErrorShape } from '../types/appShell'
+import type {
+  MapCatalogEntry,
+} from '../types/mapCatalog'
 import type {
   AreaEntity,
-  LayerKey,
-  MapEntity,
   NoGoEditSession,
   Point2D,
+  Pose2D,
   ZonePlanPathResult,
   VirtualWallEditSession,
   WorkbenchEditorMode,
-  WorkbenchSelection,
 } from '../types/map-editor'
-import type { RosServiceRequest } from '../types/ros'
-import { formatNumber } from '../utils/geometry'
+import type { GatewayPayload } from '../types/gateway'
 import {
   buildWallPathRequest,
   createWallDraftFromPath,
@@ -87,384 +88,32 @@ import {
   getRectCorners,
   updateRectRegionFromDraggedCorner,
 } from '../utils/zone-editor'
+import {
+  buildDefaultNoGoName,
+  buildDefaultWallName,
+  buildDefaultZoneName,
+  buildZonePreviewFeedbackMessage,
+  detectWorkbenchDrawerViewport,
+  findSelectedEntity,
+  formatBlockedReasons,
+  formatBytes,
+  formatMapImportBlockedFeedback,
+  formatMapImportFailureFeedback,
+  getEntityGroups,
+  getEntityList,
+  getMapRevisionId,
+  getTrimmedRawString,
+  toBoolean,
+  toOptionalNumber,
+  type MapAssetFeedbackState,
+  type MapAssetImportFormValues,
+  type MapImportFeedbackState,
+  type WorkbenchEntity,
+} from '../utils/mapWorkbenchPage'
 import './MapWorkbenchPage.css'
-
-const kindLabelMap: Record<LayerKey, string> = {
-  map: '地图',
-  zone: '覆盖区',
-  noGoArea: '禁入区',
-  virtualWall: '虚拟墙',
-}
-
-const kindColorMap: Record<LayerKey, string> = {
-  map: 'default',
-  zone: 'green',
-  noGoArea: 'orange',
-  virtualWall: 'blue',
-}
-
-type WorkbenchEntity = MapEntity | AreaEntity
-type WorkbenchEntityGroup = {
-  key: LayerKey
-  title: string
-  emptyText: string
-  entities: WorkbenchEntity[]
-}
-
-type MapAssetImportFormValues = {
-  mapName: string
-  description: string
-  setActive: boolean
-}
-
-type MapImportFeedbackState = {
-  type: 'success' | 'warning' | 'error'
-  message: string
-}
-
-type MapImportPreflightResult = {
-  canImport: boolean
-  status: string
-  message: string
-  expectedPath: string | null
-}
-
-function getConnectionTag(status: string) {
-  switch (status) {
-    case 'connected':
-      return { color: 'success', label: '已连接' }
-    case 'connecting':
-      return { color: 'processing', label: '连接中' }
-    case 'error':
-      return { color: 'error', label: '异常' }
-    case 'mock':
-      return { color: 'purple', label: '模拟数据' }
-    case 'closed':
-      return { color: 'warning', label: '已关闭' }
-    default:
-      return { color: 'default', label: '空闲' }
-  }
-}
-
-function findSelectedEntity(
-  selection: WorkbenchSelection,
-  map: MapEntity | null,
-  zones: AreaEntity[],
-  noGoAreas: AreaEntity[],
-  virtualWalls: AreaEntity[],
-) {
-  if (!selection) {
-    return map
-  }
-
-  if (selection.kind === 'map') {
-    return map?.id === selection.id ? map : null
-  }
-
-  const entityCollections: Record<Exclude<LayerKey, 'map'>, AreaEntity[]> = {
-    zone: zones,
-    noGoArea: noGoAreas,
-    virtualWall: virtualWalls,
-  }
-
-  return (
-    entityCollections[selection.kind].find((entity) => entity.id === selection.id) ?? null
-  )
-}
-
-function getEntityList(
-  map: MapEntity | null,
-  zones: AreaEntity[],
-  noGoAreas: AreaEntity[],
-  virtualWalls: AreaEntity[],
-) {
-  return [
-    ...(map ? [map] : []),
-    ...zones,
-    ...noGoAreas,
-    ...virtualWalls,
-  ] satisfies WorkbenchEntity[]
-}
-
-function getEntityGroups(
-  map: MapEntity | null,
-  zones: AreaEntity[],
-  noGoAreas: AreaEntity[],
-  virtualWalls: AreaEntity[],
-) {
-  return [
-    {
-      key: 'map',
-      title: '地图',
-      emptyText: '暂未加载到地图元数据。',
-      entities: map ? [map] : [],
-    },
-    {
-      key: 'zone',
-      title: '覆盖区',
-      emptyText: '当前没有可用覆盖区。',
-      entities: zones,
-    },
-    {
-      key: 'noGoArea',
-      title: '禁入区',
-      emptyText: '后端当前没有返回禁入区。',
-      entities: noGoAreas,
-    },
-    {
-      key: 'virtualWall',
-      title: '虚拟墙',
-      emptyText: '后端当前没有返回虚拟墙。',
-      entities: virtualWalls,
-    },
-  ] satisfies WorkbenchEntityGroup[]
-}
-
-function getMetadataEntries(entity: WorkbenchEntity | null) {
-  if (!entity) {
-    return []
-  }
-
-  return Object.entries(entity.metadata).slice(0, 12)
-}
-
-function getMapName(map: MapEntity | null) {
-  return (map?.raw.map_name as string | undefined) ?? map?.name ?? '--'
-}
-
-function buildDefaultZoneName() {
-  const now = new Date()
-  const stamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-    String(now.getHours()).padStart(2, '0'),
-    String(now.getMinutes()).padStart(2, '0'),
-    String(now.getSeconds()).padStart(2, '0'),
-  ].join('')
-
-  return `zone_${stamp}`
-}
-
-function buildDefaultNoGoName() {
-  const now = new Date()
-  const stamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-    String(now.getHours()).padStart(2, '0'),
-    String(now.getMinutes()).padStart(2, '0'),
-    String(now.getSeconds()).padStart(2, '0'),
-  ].join('')
-
-  return `no_go_${stamp}`
-}
-
-function buildDefaultWallName() {
-  const now = new Date()
-  const stamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-    String(now.getHours()).padStart(2, '0'),
-    String(now.getMinutes()).padStart(2, '0'),
-    String(now.getSeconds()).padStart(2, '0'),
-  ].join('')
-
-  return `virtual_wall_${stamp}`
-}
-
-function detectWorkbenchDrawerViewport() {
-  if (typeof window === 'undefined') {
-    return false
-  }
-
-  return window.matchMedia(
-    '(max-width: 1366px) and (min-width: 901px) and (orientation: landscape)',
-  ).matches
-}
-
-function toOptionalNumber(value: unknown) {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value
-  }
-
-  if (typeof value === 'string' && value.trim().length > 0) {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : null
-  }
-
-  return null
-}
-
-function toBoolean(value: unknown) {
-  if (typeof value === 'boolean') {
-    return value
-  }
-
-  if (typeof value === 'string') {
-    if (value === 'true') {
-      return true
-    }
-
-    if (value === 'false') {
-      return false
-    }
-  }
-
-  if (typeof value === 'number') {
-    return value !== 0
-  }
-
-  return null
-}
-
-function getTrimmedRawString(
-  entity: AreaEntity | null,
-  key: string,
-) {
-  const value = entity?.raw[key]
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : ''
-}
-
-function buildZonePreviewFeedbackMessage(options: {
-  estimatedLengthM: number | null
-  estimatedDurationS: number | null
-  areaM2: number | null
-}) {
-  const parts: string[] = []
-
-  if (options.estimatedLengthM !== null) {
-    parts.push(`预计长度 ${formatNumber(options.estimatedLengthM, 1)} m`)
-  }
-
-  if (options.estimatedDurationS !== null) {
-    parts.push(`预计时长 ${formatNumber(options.estimatedDurationS, 0)} s`)
-  }
-
-  if (options.areaM2 !== null) {
-    parts.push(`影响范围 ${formatNumber(options.areaM2, 1)} m²`)
-  }
-
-  return parts.join(' | ') || '后端已返回新的覆盖路径预览。'
-}
-
-function toGatewayErrorShape(error: unknown): GatewayErrorShape | null {
-  if (
-    error instanceof Error &&
-    'code' in error &&
-    'source' in error &&
-    'recoverable' in error &&
-    'requiresEngineer' in error &&
-    'missingDependency' in error
-  ) {
-    return error as GatewayErrorShape
-  }
-
-  return null
-}
-
-function formatMapImportBlockedFeedback(
-  preflight: MapImportPreflightResult,
-): MapImportFeedbackState {
-  switch (preflight.status) {
-    case 'MAP_IMPORT_INVALID_NAME':
-      return {
-        type: 'warning',
-        message: '请填写与现场保存的 pbstream 文件完全一致的地图名称，再重新检查。',
-      }
-    case 'MAP_IMPORT_PBSTREAM_MISSING':
-      return {
-        type: 'warning',
-        message:
-          preflight.expectedPath?.trim()
-            ? `当前环境缺少 pbstream 文件，暂不可导入。请先确认文件存在：${preflight.expectedPath}`
-            : preflight.message,
-      }
-    case 'MAP_IMPORT_PBSTREAM_DIR_MISSING':
-      return {
-        type: 'error',
-        message: preflight.message,
-      }
-    default:
-      return {
-        type: preflight.canImport ? 'success' : 'warning',
-        message: preflight.message,
-      }
-  }
-}
-
-function formatMapImportFailureFeedback(
-  error: unknown,
-  phase: 'preflight' | 'import',
-): MapImportFeedbackState {
-  const gatewayError = toGatewayErrorShape(error)
-  const fallbackMessage =
-    error instanceof Error
-      ? error.message
-      : phase === 'preflight'
-        ? '导入前置检查失败，暂不发起导入。'
-        : '地图资产导入失败，请稍后重试。'
-
-  if (gatewayError) {
-    switch (gatewayError.code) {
-      case 'MAP_IMPORT_INVALID_NAME':
-        return {
-          type: 'warning',
-          message: '请填写与现场保存的 pbstream 文件完全一致的地图名称，再重新尝试。',
-        }
-      case 'MAP_IMPORT_PBSTREAM_MISSING':
-        return {
-          type: 'warning',
-          message: gatewayError.message,
-        }
-      case 'MAP_IMPORT_PBSTREAM_DIR_MISSING':
-        return {
-          type: 'error',
-          message: gatewayError.message,
-        }
-      default:
-        if (gatewayError.missingDependency) {
-          return {
-            type: 'error',
-            message:
-              phase === 'preflight'
-                ? `导入前置检查接口暂不可用，请检查 ${gatewayError.missingDependency}。后端返回：${gatewayError.message}`
-                : `地图资产导入接口暂不可用，请检查 ${gatewayError.missingDependency}。后端返回：${gatewayError.message}`,
-          }
-        }
-
-        if (gatewayError.code === 'GATEWAY_HTTP_ERROR') {
-          return {
-            type: 'error',
-            message:
-              phase === 'preflight'
-                ? `导入前置检查失败，站点网关暂时没有给出有效响应。后端返回：${gatewayError.message}`
-                : `地图资产导入失败，站点网关暂时没有给出有效响应。后端返回：${gatewayError.message}`,
-          }
-        }
-    }
-  }
-
-  if (/pbstream|no such file|not found|missing/i.test(fallbackMessage)) {
-    return {
-      type: 'warning',
-      message: `当前环境缺少 pbstream 文件，暂不可导入。后端返回：${fallbackMessage}`,
-    }
-  }
-
-  return {
-    type: 'error',
-    message:
-      phase === 'preflight'
-        ? `导入前置检查失败：${fallbackMessage}`
-        : `地图资产导入失败：${fallbackMessage}`,
-  }
-}
 
 export function MapWorkbenchPage() {
   const [mapImportForm] = Form.useForm<MapAssetImportFormValues>()
-  const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [draftDisplayName, setDraftDisplayName] = useState(buildDefaultZoneName)
   const [profileName, setProfileName] = useState('')
   const [draftNoGoName, setDraftNoGoName] = useState(buildDefaultNoGoName)
@@ -486,13 +135,18 @@ export function MapWorkbenchPage() {
     planId: string | null
     warnings: string[]
   } | null>(null)
-  const [zonePreviewFeedback, setZonePreviewFeedback] = useState<{
+  const [, setZonePreviewFeedback] = useState<{
     type: 'success' | 'warning'
     message: string
   } | null>(null)
   const [isImportingMapAsset, setIsImportingMapAsset] = useState(false)
   const [isCheckingMapImport, setIsCheckingMapImport] = useState(false)
   const [mapImportFeedback, setMapImportFeedback] = useState<MapImportFeedbackState | null>(null)
+  const [mapAssetFeedback, setMapAssetFeedback] = useState<MapAssetFeedbackState | null>(null)
+  const [softDeletingRevisionId, setSoftDeletingRevisionId] = useState('')
+  const [hardDeletingRevisionId, setHardDeletingRevisionId] = useState('')
+  const [isCleanupDryRunning, setIsCleanupDryRunning] = useState(false)
+  const [isCleanupExecuting, setIsCleanupExecuting] = useState(false)
   const [isToolsDrawerOpen, setIsToolsDrawerOpen] = useState(false)
   const [isDetailsDrawerOpen, setIsDetailsDrawerOpen] = useState(false)
   const [isTabletDrawerViewport, setIsTabletDrawerViewport] = useState(
@@ -500,21 +154,18 @@ export function MapWorkbenchPage() {
   )
   const queryClient = useQueryClient()
   const { isTouchCapable, isCoarsePointer } = useInputCapabilities()
-  const { snapshot, defaultUrl, connect } = useRosConnection()
+  const { snapshot } = useRosConnection()
   const servicesReady = snapshot.status !== 'connecting'
-  const rosDebug = useRosDebug()
+  const mapCatalog = useMapCatalog()
   const {
     data,
     isInitialLoading,
     mapError,
-    mapQueryFetchStatus,
-    mapQueryStatus,
     zonesQueryFetchStatus,
     zonesQueryStatus,
     zonesError,
-    noGoAreasError,
-    virtualWallsError,
   } = useMapWorkbenchData(snapshot)
+  const slamWorkflow = useSlamWorkflowState(snapshot)
 
   const {
     layerVisibility,
@@ -626,6 +277,14 @@ export function MapWorkbenchPage() {
     () => getEntityGroups(data.map, data.zones, data.noGoAreas, data.virtualWalls),
     [data.map, data.noGoAreas, data.virtualWalls, data.zones],
   )
+  const enabledMapAssets = useMemo(
+    () => mapCatalog.entries.filter((entry) => entry.enabled),
+    [mapCatalog.entries],
+  )
+  const disabledMapAssets = useMemo(
+    () => mapCatalog.entries.filter((entry) => !entry.enabled),
+    [mapCatalog.entries],
+  )
 
   const selectedEntity = useMemo(
     () =>
@@ -661,6 +320,35 @@ export function MapWorkbenchPage() {
 
     return ''
   }, [data.map, data.noGoAreas, data.virtualWalls, data.zones])
+  const robotPose = useMemo<Pose2D | null>(() => {
+    const state = slamWorkflow.effectiveState
+    if (!state || state.trackedPoseFresh !== true) {
+      return null
+    }
+
+    if (state.trackedPoseFrame.trim().toLowerCase() !== 'map') {
+      return null
+    }
+
+    const x = state.trackedPoseX
+    const y = state.trackedPoseY
+    if (x === null || y === null || !Number.isFinite(x) || !Number.isFinite(y)) {
+      return null
+    }
+
+    const poseMapName = (state.runtimeMapName || state.activeMapName).trim()
+    const canvasMapName = workspaceMapName.trim()
+    if (poseMapName && canvasMapName && poseMapName !== canvasMapName) {
+      return null
+    }
+
+    const theta = state.trackedPoseTheta
+    return {
+      x,
+      y,
+      theta: theta !== null && Number.isFinite(theta) ? theta : null,
+    }
+  }, [slamWorkflow.effectiveState, workspaceMapName])
   const hasWorkspaceContext = hasMap || workspaceMapName.length > 0
   const hasDrawableLayers =
     data.zones.length > 0 || data.noGoAreas.length > 0 || data.virtualWalls.length > 0
@@ -682,7 +370,6 @@ export function MapWorkbenchPage() {
       selectedZoneEntity?.id ?? 'none',
       selectedZoneAlignmentVersion || 'default-alignment',
       selectedZonePlanProfileName || 'default-profile',
-      snapshot.url,
       snapshot.sessionId,
     ],
     queryFn: () =>
@@ -802,51 +489,6 @@ export function MapWorkbenchPage() {
       ? draftWallPath ?? draftWall?.displayPath ?? null
       : null
   const isAnyEditorActive = zoneMode !== 'idle' || constraintMode !== 'idle'
-  const activeEditorSummary = useMemo(() => {
-    if (zoneMode === 'creating-zone') {
-      return {
-        title: '正在新建覆盖区',
-        description: '当前覆盖区草稿尚未提交，退出后会丢失本次草稿和预览结果。',
-      }
-    }
-
-    if (zoneMode === 'editing-zone') {
-      return {
-        title: '正在编辑覆盖区',
-        description: '当前覆盖区修改尚未保存，退出后会丢失本次几何和参数调整。',
-      }
-    }
-
-    if (constraintMode === 'creating-no-go') {
-      return {
-        title: '正在新建禁入区',
-        description: '当前禁入区草稿尚未保存，退出后会丢失本次矩形草稿。',
-      }
-    }
-
-    if (constraintMode === 'editing-no-go') {
-      return {
-        title: '正在编辑禁入区',
-        description: '当前禁入区修改尚未保存，退出后会丢失本次边界调整。',
-      }
-    }
-
-    if (constraintMode === 'creating-wall') {
-      return {
-        title: '正在新建虚拟墙',
-        description: '当前虚拟墙草稿尚未保存，退出后会丢失本次端点和缓冲距离设置。',
-      }
-    }
-
-    if (constraintMode === 'editing-wall') {
-      return {
-        title: '正在编辑虚拟墙',
-        description: '当前虚拟墙修改尚未保存，退出后会丢失本次路径和缓冲距离调整。',
-      }
-    }
-
-    return null
-  }, [constraintMode, zoneMode])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1003,15 +645,27 @@ export function MapWorkbenchPage() {
     await queryClient.invalidateQueries({
       queryKey: ['map-catalog'],
     })
+    await mapCatalog.refetch()
     await queryClient.refetchQueries({
       queryKey: ['map-catalog'],
       type: 'active',
     })
   }
 
-  const handleReconnect = async (url?: string) => {
-    await connect((url ?? snapshot.url) || defaultUrl)
-    await refetchWorkbenchData()
+  const refreshMapAssetRelatedData = async () => {
+    await Promise.all([
+      refreshMapCatalog(),
+      refetchWorkbenchData(),
+      queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+      queryClient.invalidateQueries({ queryKey: ['schedule-management'] }),
+      queryClient.invalidateQueries({ queryKey: ['coverage-zone-catalog'] }),
+    ])
+
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: ['tasks'], type: 'active' }),
+      queryClient.refetchQueries({ queryKey: ['schedule-management'], type: 'active' }),
+      queryClient.refetchQueries({ queryKey: ['coverage-zone-catalog'], type: 'active' }),
+    ])
   }
 
   const handleImportCurrentMapAsset = async () => {
@@ -1059,6 +713,240 @@ export function MapWorkbenchPage() {
       setMapImportFeedback(formatMapImportFailureFeedback(error, 'import'))
     } finally {
       setIsImportingMapAsset(false)
+    }
+  }
+
+  const handleSoftDeleteMapAsset = async (entry: MapCatalogEntry) => {
+    const revisionId = getMapRevisionId(entry)
+    const loadingKey = revisionId || entry.mapName
+
+    setMapAssetFeedback(null)
+    setSoftDeletingRevisionId(loadingKey)
+
+    try {
+      const result = await softDeleteMapAsset({
+        mapName: entry.mapName,
+        mapRevisionId: revisionId,
+      })
+
+      if (!result.success) {
+        setMapAssetFeedback({
+          type: 'warning',
+          title: '地图未移入回收站',
+          message:
+            formatBlockedReasons(result.blockedReasons) ||
+            result.message ||
+            '后端拒绝了本次删除请求。',
+        })
+        return
+      }
+
+      await refreshMapCatalog()
+      await refetchWorkbenchData()
+      setMapAssetFeedback({
+        type: 'success',
+        title: '地图已移入回收站',
+        message: result.message || `${entry.displayName} 已禁用，可在回收站释放磁盘空间。`,
+      })
+    } catch (error) {
+      setMapAssetFeedback({
+        type: 'error',
+        title: '地图删除失败',
+        message: error instanceof Error ? error.message : '地图删除失败。',
+      })
+    } finally {
+      setSoftDeletingRevisionId('')
+    }
+  }
+
+  const handleHardDeleteMapAsset = async (entry: MapCatalogEntry) => {
+    const revisionId = getMapRevisionId(entry)
+
+    if (!revisionId) {
+      setMapAssetFeedback({
+        type: 'warning',
+        title: '缺少 revision id',
+        message: '后端没有返回该地图资产的 revision id，暂不能释放磁盘空间。',
+      })
+      return
+    }
+
+    setMapAssetFeedback(null)
+    setHardDeletingRevisionId(revisionId)
+
+    try {
+      const dryRunResult = await hardDeleteMapAsset({
+        mapName: entry.mapName,
+        mapRevisionId: revisionId,
+        dryRun: true,
+        cascade: true,
+        confirmToken: '',
+      })
+
+      if (!dryRunResult.success) {
+        setMapAssetFeedback({
+          type: 'warning',
+          title: '地图资产删除被阻止',
+          message:
+            formatBlockedReasons(dryRunResult.blockedReasons) ||
+            dryRunResult.message ||
+            '后端阻止了该地图资产的物理删除。',
+        })
+        return
+      }
+
+      if (!dryRunResult.confirmToken) {
+        setMapAssetFeedback({
+          type: 'error',
+          title: '地图资产删除失败',
+          message: '后端 dry-run 未返回 confirm_token，前端不会绕过预检直接永久删除。',
+        })
+        return
+      }
+
+      Modal.confirm({
+        title: '确认删除地图资产',
+        okText: '确认删除',
+        cancelText: '取消',
+        okButtonProps: { danger: true },
+        content: (
+          <div className="map-asset-confirm">
+            <Descriptions column={1} size="small" colon={false}>
+              <Descriptions.Item label="地图">{entry.displayName}</Descriptions.Item>
+            </Descriptions>
+            {dryRunResult.blockedReasons.length > 0 ? (
+              <Typography.Text type="warning">
+                {formatBlockedReasons(dryRunResult.blockedReasons)}
+              </Typography.Text>
+            ) : null}
+          </div>
+        ),
+        onOk: async () => {
+          const executeResult = await hardDeleteMapAsset({
+            mapName: entry.mapName,
+            mapRevisionId: revisionId,
+            dryRun: false,
+            cascade: true,
+            confirmToken: dryRunResult.confirmToken,
+          })
+
+          if (!executeResult.success) {
+            setMapAssetFeedback({
+              type: 'warning',
+              title: '地图资产删除被阻止',
+              message:
+                formatBlockedReasons(executeResult.blockedReasons) ||
+                executeResult.message ||
+                '后端阻止了该地图资产的物理删除。',
+            })
+            return
+          }
+
+          await refreshMapAssetRelatedData()
+          setMapAssetFeedback({
+            type: 'success',
+            title: '地图资产已删除',
+          })
+        },
+      })
+    } catch (error) {
+      setMapAssetFeedback({
+        type: 'error',
+        title: '地图资产删除失败',
+        message: error instanceof Error ? error.message : '地图资产删除失败。',
+      })
+    } finally {
+      setHardDeletingRevisionId('')
+    }
+  }
+
+  const handleCleanupDisabledMapAssets = async () => {
+    setMapAssetFeedback(null)
+    setIsCleanupDryRunning(true)
+
+    try {
+      const dryRunResult = await cleanupDisabledMapAssets({
+        dryRun: true,
+        minAgeDays: 0,
+        maxReclaimBytes: 0,
+        confirmToken: '',
+      })
+
+      if (!dryRunResult.success) {
+        setMapAssetFeedback({
+          type: 'warning',
+          title: '批量清理被阻止',
+          message:
+            formatBlockedReasons(dryRunResult.blockedReasons) ||
+            dryRunResult.message ||
+            '后端阻止了批量清理。',
+        })
+        return
+      }
+
+      Modal.confirm({
+        title: '确认清理已禁用地图资产',
+        okText: '确认清理',
+        cancelText: '取消',
+        okButtonProps: { danger: true },
+        content: (
+          <div className="map-asset-confirm">
+            <Descriptions column={1} size="small" colon={false}>
+              <Descriptions.Item label="候选数量">
+                {dryRunResult.candidateCount}
+              </Descriptions.Item>
+              <Descriptions.Item label="可释放空间">
+                {formatBytes(dryRunResult.reclaimableBytes)}
+              </Descriptions.Item>
+            </Descriptions>
+            {dryRunResult.blockedReasons.length > 0 ? (
+              <Typography.Text type="warning">
+                {formatBlockedReasons(dryRunResult.blockedReasons)}
+              </Typography.Text>
+            ) : null}
+            <Typography.Text type="danger">物理删除后不可恢复。</Typography.Text>
+          </div>
+        ),
+        onOk: async () => {
+          setIsCleanupExecuting(true)
+          try {
+            const executeResult = await cleanupDisabledMapAssets({
+              dryRun: false,
+              minAgeDays: 0,
+              maxReclaimBytes: 0,
+              confirmToken: 'CLEANUP_DISABLED',
+            })
+
+            if (!executeResult.success) {
+              setMapAssetFeedback({
+                type: 'warning',
+                title: '批量清理被阻止',
+                message:
+                  formatBlockedReasons(executeResult.blockedReasons) ||
+                  executeResult.message ||
+                  '后端阻止了批量清理。',
+              })
+              return
+            }
+
+            await refreshMapAssetRelatedData()
+            setMapAssetFeedback({
+              type: 'success',
+              title: '已清理地图资产',
+            })
+          } finally {
+            setIsCleanupExecuting(false)
+          }
+        },
+      })
+    } catch (error) {
+      setMapAssetFeedback({
+        type: 'error',
+        title: '批量清理失败',
+        message: error instanceof Error ? error.message : '批量清理失败。',
+      })
+    } finally {
+      setIsCleanupDryRunning(false)
     }
   }
 
@@ -1503,7 +1391,7 @@ export function MapWorkbenchPage() {
     const region = zoneDraftRect?.raw.display_region
 
     return typeof region === 'object' && region !== null
-      ? (region as RosServiceRequest)
+      ? (region as GatewayPayload)
       : null
   }
 
@@ -1511,7 +1399,7 @@ export function MapWorkbenchPage() {
     const region = noGoDraftRect?.raw.display_region
 
     return typeof region === 'object' && region !== null
-      ? (region as RosServiceRequest)
+      ? (region as GatewayPayload)
       : null
   }
 
@@ -1877,12 +1765,7 @@ export function MapWorkbenchPage() {
     }
   }
 
-  const connectionTag = getConnectionTag(snapshot.status)
-  const mapDataLength = data.map?.occupancyGrid?.data.length ?? 0
   const hasOpenWorkbenchDrawer = isToolsDrawerOpen || isDetailsDrawerOpen
-  const drawerSummaryText = selectedEntity
-    ? `${kindLabelMap[selectedEntity.kind]}: ${selectedEntity.name}`
-    : 'Select an object to inspect details without shrinking the canvas.'
   const handleSelectEntityFromList = (entity: WorkbenchEntity) => {
     select({ kind: entity.kind, id: entity.id })
 
@@ -1897,19 +1780,7 @@ export function MapWorkbenchPage() {
       <header className="workbench-header">
         <div>
           <Typography.Title level={2}>地图工作台</Typography.Title>
-          <Typography.Paragraph>
-            这里用于地图、覆盖区域、禁行区和虚拟墙的现场配置与校核。默认给售后与工程师使用，普通运维不直接暴露该工作台。
-          </Typography.Paragraph>
         </div>
-        <Space size="middle" wrap>
-          <Tag color="gold">地图配置</Tag>
-          <Tag color={connectionTag.color}>{connectionTag.label}</Tag>
-          <RosbridgeEndpointControl
-            snapshot={snapshot}
-            defaultUrl={defaultUrl}
-            onConnect={handleReconnect}
-          />
-        </Space>
       </header>
 
       {snapshot.status === 'error' && snapshot.lastError ? (
@@ -1921,52 +1792,12 @@ export function MapWorkbenchPage() {
         />
       ) : null}
 
-      {snapshot.status === 'mock' ? (
-        <AppFeedbackBanner
-          tone="info"
-          title="当前页面正在使用本地 Mock 数据"
-          description="在 .env.development 中设置 VITE_USE_MOCK_DATA=false 后，可切回 live 后端。"
-          className="workbench-banner"
-        />
-      ) : null}
-
       {mapError && !hasDrawableLayers ? (
         <AppFeedbackBanner
           tone="error"
           title="当前地图加载失败"
           description={mapError.message}
           className="workbench-banner"
-        />
-      ) : null}
-
-      {mapError && hasDrawableLayers ? (
-        <AppFeedbackBanner
-          tone="warning"
-          title="底图元数据暂不可用"
-          description="页面已自动降级为图层模式，当前仍可继续查看和编辑已返回的业务图层。"
-          className="workbench-banner"
-        />
-      ) : null}
-
-      {activeEditorSummary ? (
-        <AppFeedbackBanner
-          tone="warning"
-          title={activeEditorSummary.title}
-          description={activeEditorSummary.description}
-          className="workbench-banner"
-        />
-      ) : null}
-
-      {zonePreviewFeedback ? (
-        <AppFeedbackBanner
-          closable
-          tone={zonePreviewFeedback.type}
-          title={
-            zonePreviewFeedback.type === 'success' ? '覆盖区反馈已更新' : '覆盖区预览需要调整'
-          }
-          description={zonePreviewFeedback.message}
-          className="workbench-banner"
-          onClose={() => setZonePreviewFeedback(null)}
         />
       ) : null}
 
@@ -2010,324 +1841,57 @@ export function MapWorkbenchPage() {
             onCancel={handleCancelConstraintEditing}
           />
 
-          <Card title="当前地图" className="workbench-card" extra={<ApartmentOutlined />}>
-            {data.map ? (
-              <Descriptions column={1} size="small" colon={false}>
-                <Descriptions.Item label="名称">{data.map.name}</Descriptions.Item>
-                <Descriptions.Item label="ID">{data.map.id}</Descriptions.Item>
-                <Descriptions.Item label="分辨率">
-                  {formatNumber(data.map.resolution, 4)}
-                </Descriptions.Item>
-                <Descriptions.Item label="栅格尺寸">
-                  {data.map.occupancyGrid?.width ?? '--'} x{' '}
-                  {data.map.occupancyGrid?.height ?? '--'}
-                </Descriptions.Item>
-                <Descriptions.Item label="显示坐标系">
-                  {data.map.displayFrame?.frameId ?? '--'}
-                </Descriptions.Item>
-              </Descriptions>
-            ) : hasWorkspaceContext ? (
-              <Space orientation="vertical" size="small" style={{ width: '100%' }}>
-                <Descriptions column={1} size="small" colon={false}>
-                  <Descriptions.Item label="名称">
-                    {workspaceMapName || '当前地图'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="状态">
-                    <Tag color="warning">图层降级模式</Tag>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="显示坐标系">
-                    {effectiveAlignment?.alignedFrame ??
-                      data.zones[0]?.displayFrame?.frameId ??
-                      data.noGoAreas[0]?.displayFrame?.frameId ??
-                      data.virtualWalls[0]?.displayFrame?.frameId ??
-                      '--'}
-                  </Descriptions.Item>
-                </Descriptions>
-                <Typography.Paragraph className="workbench-footnote">
-                  当前暂时拿不到底图元数据，但实时后端返回的工作区图层仍然可用，页面已自动降级为图层模式。
-                </Typography.Paragraph>
-              </Space>
-            ) : isInitialLoading ? (
-              <AppLoadingState message="正在加载当前地图元数据..." />
-            ) : (
-              <AppEmptyState description={mapError?.message ?? '当前还没有可用的活动地图。'} />
-            )}
-          </Card>
+          <ObjectListCard
+            entityGroups={entityGroups}
+            selectedEntity={selectedEntity}
+            isZoneListLoading={isZoneListLoading}
+            onSelect={handleSelectEntityFromList}
+          />
 
-          <Card
-            title="导入当前地图资产"
-            className="workbench-card"
-            extra={<Tag color="cyan">手动</Tag>}
-          >
-            {mapImportFeedback ? (
-              <AppFeedbackBanner
-                closable
-                tone={mapImportFeedback.type}
-                title={
-                  mapImportFeedback.type === 'success'
-                    ? '地图资产导入完成'
-                    : mapImportFeedback.type === 'warning'
-                      ? '地图资产导入前置检查未通过'
-                    : '地图资产导入失败'
-                }
-                description={mapImportFeedback.message}
-                className="workbench-inline-alert"
-                onClose={() => setMapImportFeedback(null)}
-              />
-            ) : null}
+          <CurrentMapCard
+            data={data}
+            hasWorkspaceContext={hasWorkspaceContext}
+            workspaceMapName={workspaceMapName}
+            effectiveAlignment={effectiveAlignment}
+            isInitialLoading={isInitialLoading}
+            mapError={mapError}
+          />
 
-            <Typography.Paragraph className="workbench-footnote map-import-note">
-              这里会把当前 Cartographer 保存的文件{' '}
-              <code>/opt/carto/map/&lt;map_name&gt;.pbstream</code>{' '}
-              导入到受管地图资产目录。请填写与操作员保存 pbstream 时完全一致的地图名称。
-            </Typography.Paragraph>
+          <MapAssetPanel
+            enabledMapAssets={enabledMapAssets}
+            disabledMapAssets={disabledMapAssets}
+            mapCatalogError={mapCatalog.error ?? null}
+            mapAssetFeedback={mapAssetFeedback}
+            mapImportFeedback={mapImportFeedback}
+            mapImportForm={mapImportForm}
+            servicesReady={servicesReady}
+            isAnyEditorActive={isAnyEditorActive}
+            isCleanupDryRunning={isCleanupDryRunning}
+            isCleanupExecuting={isCleanupExecuting}
+            isCheckingMapImport={isCheckingMapImport}
+            isImportingMapAsset={isImportingMapAsset}
+            softDeletingRevisionId={softDeletingRevisionId}
+            hardDeletingRevisionId={hardDeletingRevisionId}
+            onClearAssetFeedback={() => setMapAssetFeedback(null)}
+            onClearImportFeedback={() => setMapImportFeedback(null)}
+            onImportCurrentMapAsset={() => void handleImportCurrentMapAsset()}
+            onSoftDeleteMapAsset={(entry) => void handleSoftDeleteMapAsset(entry)}
+            onHardDeleteMapAsset={(entry) => void handleHardDeleteMapAsset(entry)}
+            onCleanupDisabledMapAssets={() => void handleCleanupDisabledMapAssets()}
+          />
 
-            <Form<MapAssetImportFormValues>
-              form={mapImportForm}
-              layout="vertical"
-              initialValues={{
-                mapName: '',
-                description: '',
-                setActive: true,
-              }}
-              className="map-import-form"
-            >
-              <Form.Item
-                name="mapName"
-                label="地图名称"
-                rules={[{ required: true, message: '请输入已保存的 pbstream 地图名称' }]}
-              >
-                <Input
-                  placeholder="请输入保存 pbstream 时使用的同名 map_name"
-                  disabled={!servicesReady || isAnyEditorActive}
-                />
-              </Form.Item>
+          <LayerVisibilityCard
+            layerVisibility={layerVisibility}
+            onLayerVisibilityChange={setLayerVisibility}
+          />
 
-              <Form.Item
-                name="description"
-                label="备注"
-              >
-                <Input
-                  placeholder="可选，填写现场说明"
-                  disabled={!servicesReady || isAnyEditorActive}
-                />
-              </Form.Item>
+          <ZoneFocusCard
+            showSelectedZoneOnly={showSelectedZoneOnly}
+            showSelectedZonePath={showSelectedZonePath}
+            onShowSelectedZoneOnlyChange={setShowSelectedZoneOnly}
+            onShowSelectedZonePathChange={setShowSelectedZonePath}
+          />
 
-              <Form.Item
-                name="setActive"
-                label="导入后设为当前地图"
-                valuePropName="checked"
-              >
-                <Switch
-                  checkedChildren="设为当前"
-                  unCheckedChildren="保持现状"
-                  disabled={!servicesReady || isAnyEditorActive}
-                />
-              </Form.Item>
-
-              <Space wrap>
-                <Button
-                  type="primary"
-                  loading={isCheckingMapImport || isImportingMapAsset}
-                  disabled={!servicesReady || isAnyEditorActive}
-                  onClick={() => void handleImportCurrentMapAsset()}
-                >
-                  {isCheckingMapImport ? '正在检查导入前置条件' : '导入当前地图资产'}
-                </Button>
-                <Button
-                  disabled={isImportingMapAsset}
-                  onClick={() => {
-                    mapImportForm.resetFields()
-                    setMapImportFeedback(null)
-                  }}
-                >
-                  重置
-                </Button>
-              </Space>
-            </Form>
-
-            {isAnyEditorActive ? (
-              <Typography.Paragraph className="workbench-footnote map-import-note">
-                请先完成当前覆盖区或约束编辑，再切换地图资产。
-              </Typography.Paragraph>
-            ) : null}
-          </Card>
-
-          <Card title="图层显示" className="workbench-card" extra={<ClusterOutlined />}>
-            <div className="layer-toggle-list">
-              {(
-                [
-                  ['map', '栅格底图'],
-                  ['zone', '显示全部覆盖区'],
-                  ['noGoArea', '禁入区'],
-                  ['virtualWall', '虚拟墙'],
-                ] satisfies Array<[LayerKey, string]>
-              ).map(([key, label]) => (
-                <div key={key} className="layer-toggle-row">
-                  <Typography.Text>{label}</Typography.Text>
-                  <Switch
-                    checked={layerVisibility[key]}
-                    onChange={(checked) => setLayerVisibility(key, checked)}
-                  />
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card title="覆盖区聚焦" className="workbench-card" extra={<Tag color="green">覆盖区</Tag>}>
-            <div className="layer-toggle-list">
-              <div className="layer-toggle-row">
-                <Typography.Text>仅显示当前覆盖区</Typography.Text>
-                <Switch
-                  checked={showSelectedZoneOnly}
-                  onChange={setShowSelectedZoneOnly}
-                />
-              </div>
-              <div className="layer-toggle-row">
-                <Typography.Text>显示当前覆盖区路径</Typography.Text>
-                <Switch
-                  checked={showSelectedZonePath}
-                  onChange={setShowSelectedZonePath}
-                />
-              </div>
-            </div>
-
-            <Typography.Paragraph className="workbench-footnote">
-              覆盖区轮廓仍然来自 `/database_server/site/coverage_zone_service getAll`。当前覆盖区的活动路径只会在选中后按需加载。“仅显示当前覆盖区”会优先于“显示全部覆盖区”。
-            </Typography.Paragraph>
-
-            {isZoneListLoading ? (
-              <Typography.Paragraph className="workbench-footnote zone-focus-note">
-                覆盖区列表仍在加载中。加载完成后，若当前地图只有 1 个覆盖区，页面会自动把它设为当前覆盖区。
-              </Typography.Paragraph>
-            ) : null}
-
-            {showSelectedZoneOnly && !selectedZoneEntity ? (
-              <Typography.Paragraph className="workbench-footnote zone-focus-note">
-                请先在对象列表中选中一个覆盖区，再单独聚焦显示。
-              </Typography.Paragraph>
-            ) : null}
-
-            {showSelectedZonePath && !selectedZoneEntity ? (
-              <Typography.Paragraph className="workbench-footnote zone-focus-note">
-                请先选中一个覆盖区，工作台才会去请求它的活动路径。
-              </Typography.Paragraph>
-            ) : null}
-          </Card>
-
-          <Card title="对象列表" className="workbench-card" extra={entityList.length}>
-            <div className="object-group-list">
-              {entityGroups.map((group) => (
-                <section key={group.key} className="object-group">
-                  <div className="object-group-header">
-                    <Typography.Text strong>{group.title}</Typography.Text>
-                    <Tag color={kindColorMap[group.key]}>{group.entities.length}</Tag>
-                  </div>
-
-                  {group.entities.length > 0 ? (
-                    <div className="object-group-items">
-                      {group.entities.map((entity) => (
-                        <button
-                          key={`${entity.kind}:${entity.id}`}
-                          type="button"
-                          className={`object-list-item ${
-                            selectedEntity?.id === entity.id &&
-                            selectedEntity.kind === entity.kind
-                              ? 'is-selected'
-                              : ''
-                          }`}
-                          onClick={() => handleSelectEntityFromList(entity)}
-                        >
-                          <span className="object-list-main">
-                            <Tag color={kindColorMap[entity.kind]}>
-                              {kindLabelMap[entity.kind]}
-                            </Tag>
-                            <span>{entity.name}</span>
-                          </span>
-                          <span className="object-list-subtle">{entity.id}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : group.key === 'zone' && isZoneListLoading ? (
-                    <AppLoadingState
-                      compact
-                      className="workbench-loading workbench-loading-compact"
-                      message="正在加载覆盖区列表..."
-                    />
-                  ) : (
-                    <Typography.Paragraph className="workbench-footnote object-group-empty">
-                      {group.emptyText}
-                    </Typography.Paragraph>
-                  )}
-                </section>
-              ))}
-            </div>
-          </Card>
-
-          <Card
-            title="诊断信息"
-            className="workbench-card"
-            extra={
-              <Space size="small" wrap>
-                <Tag color="default">工程诊断</Tag>
-                <Button
-                  size="small"
-                  type="text"
-                  icon={<RadarChartOutlined />}
-                  onClick={() => setShowDiagnostics((value) => !value)}
-                >
-                  {showDiagnostics ? '收起' : '展开'}
-                </Button>
-              </Space>
-            }
-          >
-            {showDiagnostics ? (
-              <Descriptions column={1} size="small" colon={false}>
-                <Descriptions.Item label="最近 ROS 事件">
-                  <Typography.Text ellipsis>
-                    {rosDebug.lastEvent}
-                  </Typography.Text>
-                </Descriptions.Item>
-                <Descriptions.Item label="当前 map_name">
-                  {getMapName(data.map)}
-                </Descriptions.Item>
-                <Descriptions.Item label="map_data.info.width">
-                  {data.map?.occupancyGrid?.width ?? '--'}
-                </Descriptions.Item>
-                <Descriptions.Item label="map_data.info.height">
-                  {data.map?.occupancyGrid?.height ?? '--'}
-                </Descriptions.Item>
-                <Descriptions.Item label="map_data.info.resolution">
-                  {formatNumber(data.map?.occupancyGrid?.resolution, 4)}
-                </Descriptions.Item>
-                <Descriptions.Item label="map_data.data.length">
-                  {mapDataLength || '--'}
-                </Descriptions.Item>
-                <Descriptions.Item label="覆盖区数量">
-                  {data.zones.length}
-                </Descriptions.Item>
-                <Descriptions.Item label="禁入区数量">
-                  {data.noGoAreas.length}
-                </Descriptions.Item>
-                <Descriptions.Item label="虚拟墙数量">
-                  {data.virtualWalls.length}
-                </Descriptions.Item>
-                <Descriptions.Item label="站点网关 ROS 状态">
-                  <Tag color={connectionTag.color}>{connectionTag.label}</Tag>
-                </Descriptions.Item>
-                <Descriptions.Item label="地图查询状态">
-                  {mapQueryStatus}
-                </Descriptions.Item>
-                <Descriptions.Item label="地图抓取状态">
-                  {mapQueryFetchStatus}
-                </Descriptions.Item>
-              </Descriptions>
-            ) : (
-              <Typography.Paragraph className="workbench-footnote diagnostics-card-copy">
-                诊断信息默认保持折叠，这样现场编辑界面会更聚焦。
-              </Typography.Paragraph>
-            )}
-          </Card>
         </aside>
 
         <main className={`workbench-center ${useDrawerPanels ? 'is-drawer-mode' : ''}`}>
@@ -2353,22 +1917,12 @@ export function MapWorkbenchPage() {
                   详情
                 </Button>
               </Space>
-              <Typography.Text className="workbench-tablet-summary">
-                平板模式会优先保留画布视图，工具和详情会放到侧滑面板中。{drawerSummaryText}
-              </Typography.Text>
             </div>
           ) : null}
 
           <Card
             title="地图画布"
             className="workbench-card workbench-canvas-card"
-            extra={
-              <Space size="small" wrap>
-                <Tag color="green">覆盖区 {data.zones.length}</Tag>
-                <Tag color="orange">禁入区 {data.noGoAreas.length}</Tag>
-                <Tag color="blue">虚拟墙 {data.virtualWalls.length}</Tag>
-              </Space>
-            }
           >
             {canRenderCanvas ? (
               <MapCanvas
@@ -2386,6 +1940,7 @@ export function MapWorkbenchPage() {
                 selectedZonePath={selectedZonePathResult}
                 editableCorners={canvasEditableCorners}
                 editableWallEndpoints={wallEditableEndpoints}
+                robotPose={robotPose}
                 selected={selected}
                 onCanvasPointPick={handleCanvasPointPick}
                 onEditableCornerChange={handleCanvasEditableCornerChange}
@@ -2467,256 +2022,36 @@ export function MapWorkbenchPage() {
             onCancel={handleCancelConstraintEditing}
           />
 
-          {selectedNoGoAreaEntity ? (
-            <NoGoDetailsPanel
-              area={selectedNoGoAreaEntity}
-              extra={
-                <Space size="small" wrap>
-                  <Button
-                    size="small"
-                    onClick={() => void handleStartEditingNoGo()}
-                    loading={isLoadingNoGoDetail}
-                    disabled={isAnyEditorActive && constraintMode !== 'editing-no-go'}
-                  >
-                    编辑禁入区
-                  </Button>
-                  <Popconfirm
-                    title="删除禁入区"
-                    description="该操作会把当前所选禁入区从后端删除。"
-                    okText="删除"
-                    cancelText="取消"
-                    onConfirm={() => void handleDeleteNoGo()}
-                    okButtonProps={{ danger: true, loading: constraintDeleteLoading }}
-                    disabled={isAnyEditorActive}
-                  >
-                    <Button
-                      size="small"
-                      danger
-                      loading={constraintDeleteLoading}
-                      disabled={isAnyEditorActive}
-                    >
-                      删除禁入区
-                    </Button>
-                  </Popconfirm>
-                </Space>
-              }
-            />
-          ) : selectedVirtualWallEntity ? (
-            <VirtualWallDetailsPanel
-              wall={selectedVirtualWallEntity}
-              extra={
-                <Space size="small" wrap>
-                  <Button
-                    size="small"
-                    onClick={() => void handleStartEditingWall()}
-                    loading={isLoadingWallDetail}
-                    disabled={isAnyEditorActive && constraintMode !== 'editing-wall'}
-                  >
-                    编辑虚拟墙
-                  </Button>
-                  <Popconfirm
-                    title="删除虚拟墙"
-                    description="该操作会把当前所选虚拟墙从后端删除。"
-                    okText="删除"
-                    cancelText="取消"
-                    onConfirm={() => void handleDeleteWall()}
-                    okButtonProps={{ danger: true, loading: constraintDeleteLoading }}
-                    disabled={isAnyEditorActive}
-                  >
-                    <Button
-                      size="small"
-                      danger
-                      loading={constraintDeleteLoading}
-                      disabled={isAnyEditorActive}
-                    >
-                      删除虚拟墙
-                    </Button>
-                  </Popconfirm>
-                </Space>
-              }
-            />
-          ) : (
-            <Card
-              title="当前对象"
-              className="workbench-card"
-              extra={
-                selectedZoneEntity ? (
-                  <Space size="small" wrap>
-                    <Button
-                      size="small"
-                      onClick={() => void handleStartEditingZone()}
-                      loading={isLoadingZoneDetail}
-                      disabled={isAnyEditorActive}
-                    >
-                      编辑覆盖区
-                    </Button>
-                    <Popconfirm
-                      title="删除覆盖区"
-                      description="删除后，当前覆盖区会在默认工作台列表中隐藏。"
-                      okText="删除"
-                      cancelText="取消"
-                      onConfirm={() => void handleDeleteZone()}
-                      okButtonProps={{ danger: true, loading: isDeletingZone }}
-                      disabled={isAnyEditorActive}
-                    >
-                      <Button
-                        size="small"
-                        danger
-                        loading={isDeletingZone}
-                        disabled={isAnyEditorActive}
-                      >
-                        删除覆盖区
-                      </Button>
-                    </Popconfirm>
-                  </Space>
-                ) : null
-              }
-            >
-              {zoneActionFeedback ? (
-                <AppFeedbackBanner
-                  closable
-                  tone={zoneActionFeedback.type}
-                  title={zoneActionFeedback.type === 'success' ? '覆盖区删除完成' : '覆盖区删除失败'}
-                  description={zoneActionFeedback.message}
-                  className="workbench-inline-alert"
-                  onClose={() => setZoneActionFeedback(null)}
-                />
-              ) : null}
-
-              {selectedZoneEntity && showSelectedZonePath && selectedZonePathQuery.isLoading ? (
-                <AppLoadingState
-                  compact
-                  className="workbench-loading workbench-loading-compact"
-                  message="正在加载当前覆盖区的活动路径..."
-                />
-              ) : null}
-
-              {selectedZoneEntity &&
-              showSelectedZonePath &&
-              selectedZonePathQuery.error instanceof Error ? (
-                <AppFeedbackBanner
-                  tone="warning"
-                  title="当前覆盖区路径暂不可用"
-                  description={selectedZonePathQuery.error.message}
-                  className="workbench-inline-alert"
-                />
-              ) : null}
-
-              {selectedEntity ? (
-                <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-                  <Descriptions column={1} size="small" colon={false}>
-                    <Descriptions.Item label="类型">
-                      <Tag color={kindColorMap[selectedEntity.kind]}>
-                        {kindLabelMap[selectedEntity.kind]}
-                      </Tag>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="名称">
-                      {selectedEntity.name}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="ID">{selectedEntity.id}</Descriptions.Item>
-                    <Descriptions.Item label="显示坐标系">
-                      {selectedEntity.displayFrame?.frameId ?? '--'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="区域数量">
-                      {selectedEntity.displayRegion.length}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="路径数量">
-                      {selectedEntity.displayPath.length}
-                    </Descriptions.Item>
-                    {selectedEntity.kind === 'map' ? (
-                      <Descriptions.Item label="栅格数据长度">
-                        {selectedEntity.occupancyGrid?.data.length ?? '--'}
-                      </Descriptions.Item>
-                    ) : null}
-                  </Descriptions>
-
-                  {selectedZoneEntity && selectedZonePathResult ? (
-                    <>
-                      <Descriptions column={1} size="small" colon={false}>
-                        <Descriptions.Item label="活动路径 ID">
-                          {selectedZonePathResult.activePlanId ?? '--'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="路径规划档位">
-                          {selectedZonePathResult.planProfileName || '--'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="路径显示坐标系">
-                          {selectedZonePathResult.displayFrame?.frameId ?? '--'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="路径长度">
-                          {selectedZonePathResult.estimatedLengthM !== null
-                            ? `${formatNumber(selectedZonePathResult.estimatedLengthM, 1)} m`
-                            : '--'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="路径时长">
-                          {selectedZonePathResult.estimatedDurationS !== null
-                            ? `${formatNumber(selectedZonePathResult.estimatedDurationS, 0)} s`
-                            : '--'}
-                        </Descriptions.Item>
-                      </Descriptions>
-
-                      {selectedZonePathResult.warnings.length > 0 ? (
-                        <ul className="constraint-warning-list">
-                          {selectedZonePathResult.warnings.map((warning, index) => (
-                            <li key={`${warning}-${index}`}>{warning}</li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </>
-                  ) : null}
-                </Space>
-              ) : (
-                <AppEmptyState
-                  description={
-                    hasMap
-                      ? '请选择一个地图对象查看详情。'
-                      : '地图加载完成后，这里会显示对象详情。'
-                  }
-                />
-              )}
-            </Card>
-          )}
-
-          <Card title="元数据" className="workbench-card">
-            {selectedEntity ? (
-              <Descriptions column={1} size="small" colon={false}>
-                {getMetadataEntries(selectedEntity).map(([key, value]) => (
-                  <Descriptions.Item key={key} label={key}>
-                    <Typography.Text ellipsis>
-                      {typeof value === 'string'
-                        ? value
-                        : JSON.stringify(value)}
-                    </Typography.Text>
-                  </Descriptions.Item>
-                ))}
-              </Descriptions>
-            ) : (
-              <AppEmptyState description="当前还没有可显示的元数据。" />
-            )}
-          </Card>
-
-          <Card title="告警与提示" className="workbench-card">
-            {data.warnings.length > 0 ? (
-              <ul className="constraint-warning-list">
-                {data.warnings.map((warning, index) => (
-                  <li key={`${warning}-${index}`}>{warning}</li>
-                ))}
-              </ul>
-            ) : (
-              <AppEmptyState
-                description={
-                  mapError
-                    ? '地图加载失败，请查看上方错误提示。'
-                    : '当前没有激活的告警或提示。'
-                }
-              />
-            )}
-
-            {(zonesError || noGoAreasError || virtualWallsError) && (
-              <Typography.Paragraph className="workbench-footnote">
-                即使局部图层加载失败，整页仍保持可打开。当前页面会自动降级为只读展示，方便现场继续定位问题。
-              </Typography.Paragraph>
-            )}
-          </Card>
+          <MapWorkbenchDetailsPanel
+            selectedEntity={selectedEntity}
+            selectedZoneEntity={selectedZoneEntity}
+            selectedNoGoAreaEntity={selectedNoGoAreaEntity}
+            selectedVirtualWallEntity={selectedVirtualWallEntity}
+            selectedZonePathResult={selectedZonePathResult}
+            selectedZonePathLoading={selectedZonePathQuery.isLoading}
+            selectedZonePathError={
+              selectedZonePathQuery.error instanceof Error
+                ? selectedZonePathQuery.error
+                : null
+            }
+            showSelectedZonePath={showSelectedZonePath}
+            hasMap={hasMap}
+            zoneActionFeedback={zoneActionFeedback}
+            isLoadingZoneDetail={isLoadingZoneDetail}
+            isLoadingNoGoDetail={isLoadingNoGoDetail}
+            isLoadingWallDetail={isLoadingWallDetail}
+            isAnyEditorActive={isAnyEditorActive}
+            constraintMode={constraintMode}
+            constraintDeleteLoading={constraintDeleteLoading}
+            isDeletingZone={isDeletingZone}
+            onClearZoneActionFeedback={() => setZoneActionFeedback(null)}
+            onStartEditingZone={handleStartEditingZone}
+            onStartEditingNoGo={handleStartEditingNoGo}
+            onStartEditingWall={handleStartEditingWall}
+            onDeleteZone={handleDeleteZone}
+            onDeleteNoGo={handleDeleteNoGo}
+            onDeleteWall={handleDeleteWall}
+          />
         </aside>
       </div>
 

@@ -46,6 +46,12 @@ export interface SlamWorkflowState {
   mapAgeS: number | null
   trackedPoseFresh: boolean | null
   trackedPoseAgeS: number | null
+  trackedPoseFrame: string
+  trackedPoseX: number | null
+  trackedPoseY: number | null
+  trackedPoseTheta: number | null
+  trackedPoseStampMs: number | null
+  trackedPoseSource: string
   missionState: string
   phase: string
   publicState: string

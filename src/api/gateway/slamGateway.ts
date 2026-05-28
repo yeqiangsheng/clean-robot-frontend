@@ -1,7 +1,7 @@
 import { assertCapabilityAllowed, normalizeGatewayError } from './accessControl'
 import { recordAuditEvent } from './auditTrail'
-import { requestSlamAction } from './siteGatewayClient'
-import { SLAM_SUBMIT_SERVICE } from '../ros/serviceNames'
+import { requestSlamAction } from './siteGatewayRobotControlClient'
+import { SLAM_SUBMIT_SERVICE } from '../contracts/serviceNames'
 
 import type {
   SlamActionKind,

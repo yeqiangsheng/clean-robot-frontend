@@ -1,9 +1,9 @@
-import { useMutation } from '@tanstack/react-query'
+﻿import { useMutation } from '@tanstack/react-query'
 
-import { previewCoverageRegion } from '../api/gateway/robotGateway'
+import { previewCoverageRegion } from '../api/gateway/mapWorkbenchGateway'
 import { useZoneEditorStore } from '../stores/zoneEditorStore'
 import type { MapAlignment, MapEntity } from '../types/map-editor'
-import type { RosServiceRequest } from '../types/ros'
+import type { GatewayPayload } from '../types/gateway'
 
 export function useZonePreview(
   map: MapEntity | null,
@@ -15,7 +15,7 @@ export function useZonePreview(
   const setPreviewLoading = useZoneEditorStore((state) => state.setPreviewLoading)
 
   const mutation = useMutation({
-    mutationFn: (options: { region: RosServiceRequest; profileName: string }) =>
+    mutationFn: (options: { region: GatewayPayload; profileName: string }) =>
       previewCoverageRegion({
         map,
         mapName,

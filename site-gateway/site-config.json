@@ -1,25 +1,21 @@
 {
   "siteName": "清洁机器人商用站点",
   "robotId": "local_robot",
-  "rosbridgeUrl": "ws://localhost:9090",
+  "rosbridgeUrl": "ws://127.0.0.1:9090",
   "enabledModules": {
     "overview": true,
     "workbench": true,
     "tasks": true,
     "schedules": true,
     "execution": true,
+    "dock-calibration": true,
     "slam": true,
     "runtime": true,
     "actuator-control": true
   },
   "rolePolicy": {
     "operator": [
-      "overview",
-      "taskManagement",
-      "scheduleManagement",
-      "executionControl",
-      "profileCatalog",
-      "systemReadiness"
+      "overview"
     ],
     "service": [
       "overview",
@@ -27,7 +23,9 @@
       "taskManagement",
       "scheduleManagement",
       "executionControl",
+      "dockCalibration",
       "runtimeMonitoring",
+      "slamWorkbench",
       "profileCatalog",
       "systemReadiness"
     ],
@@ -37,6 +35,7 @@
       "taskManagement",
       "scheduleManagement",
       "executionControl",
+      "dockCalibration",
       "slamWorkbench",
       "runtimeMonitoring",
       "actuatorControl",
@@ -50,6 +49,7 @@
       "taskManagement",
       "scheduleManagement",
       "executionControl",
+      "dockCalibration",
       "slamWorkbench",
       "runtimeMonitoring",
       "actuatorControl",
@@ -59,6 +59,27 @@
     ]
   },
   "sessionTtlHours": 12,
+  "clearSessionsOnStartup": true,
   "logRetentionDays": 14,
-  "mapImportPbstreamDir": "/opt/carto/map"
+  "mapImportPbstreamDir": "/opt/carto/map",
+  "bootstrapUsers": [
+    {
+      "username": "operator",
+      "displayName": "操作员",
+      "role": "operator",
+      "password": "bulibusan1314"
+    },
+    {
+      "username": "service",
+      "displayName": "服务人员",
+      "role": "service",
+      "password": "bulibusan1314"
+    },
+    {
+      "username": "engineer",
+      "displayName": "工程师",
+      "role": "engineer",
+      "password": "bulibusan1314"
+    }
+  ]
 }

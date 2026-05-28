@@ -48,9 +48,9 @@ export function getConnectionRecoveryHint(snapshot: RosConnectionSnapshot) {
   if (snapshot.status === 'closed') {
     return {
       type: 'warning' as const,
-      title: 'ROS 会话已断开',
+      title: 'ROS 未连接',
       description:
-        '站点 Gateway 在线，但 rosbridge 当前未连接。页面仍可打开，实时状态和写动作会等待 ROS 会话恢复。',
+        '站点 Gateway 在线，正在等待 rosbridge 恢复；实时状态和控制动作暂不可用。',
     }
   }
 

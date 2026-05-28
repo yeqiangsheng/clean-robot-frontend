@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 
-import { fetchGatewayOdometryTopicSnapshot } from '../api/gateway/siteGatewayClient'
-import { getOdometryState } from '../api/gateway/robotGateway'
+import { fetchGatewayOdometryTopicSnapshot } from '../api/gateway/siteGatewayStatusClient'
+import { getOdometryState } from '../api/gateway/robotStatusGateway'
 import {
   ODOMETRY_STATE_TOPIC_NAME,
   ODOMETRY_STATE_TOPIC_TYPE,
-} from '../api/ros/queryContracts'
+} from '../api/contracts/queryContracts'
 import type { OdometryTopicSnapshot } from '../types/odometry'
+import type { OdometryState } from '../types/odometry'
 import type { RosConnectionSnapshot } from '../types/ros'
+import { extractRobotPose } from '../utils/robotPose'
 import { ODOMETRY_STATE_STALE_AFTER_MS } from '../utils/topicFreshness'
 
 const ODOMETRY_TOPIC_POLL_INTERVAL_MS = 1000
@@ -34,12 +36,23 @@ function getTopicHealth(
     : ('live' as const)
 }
 
+function withRobotPose(state: OdometryState | null | undefined): OdometryState | null {
+  if (!state) {
+    return null
+  }
+
+  return {
+    ...state,
+    robotPose: state.robotPose ?? extractRobotPose(state.raw) ?? extractRobotPose(state),
+  }
+}
+
 export function useOdometryStatus(snapshot: RosConnectionSnapshot, robotId = 'local_robot') {
   const servicesReady = snapshot.isConnected || snapshot.status === 'mock'
   const [clock, setClock] = useState(() => Date.now())
 
   const serviceQuery = useQuery({
-    queryKey: ['odometry-status', robotId, snapshot.url, snapshot.sessionId],
+    queryKey: ['odometry-status', robotId, snapshot.sessionId],
     queryFn: () => getOdometryState(),
     enabled: servicesReady && snapshot.status !== 'mock',
     retry: false,
@@ -102,6 +115,11 @@ export function useOdometryStatus(snapshot: RosConnectionSnapshot, robotId = 'lo
           message: 'mock odometry ready',
           warnings: ['mock data'],
           stampMs: clock,
+          robotPose: {
+            x: 0,
+            y: 0,
+            theta: 0,
+          },
           raw: {},
         },
       } satisfies OdometryTopicSnapshot
@@ -123,13 +141,18 @@ export function useOdometryStatus(snapshot: RosConnectionSnapshot, robotId = 'lo
       messageCount: topicData?.messageCount ?? 0,
       lastMessageAt,
       ageMs,
-      state: topicData?.payload ?? null,
+      state: withRobotPose(topicData?.payload),
     } satisfies OdometryTopicSnapshot
   }, [clock, robotId, servicesReady, snapshot.status, topicQuery.data])
+
+  const effectiveState = useMemo(
+    () => topicSnapshot.state ?? withRobotPose(serviceQuery.data?.state),
+    [serviceQuery.data?.state, topicSnapshot.state],
+  )
 
   return {
     serviceQuery,
     topicSnapshot,
-    effectiveState: topicSnapshot.state ?? serviceQuery.data?.state ?? null,
+    effectiveState,
   }
 }

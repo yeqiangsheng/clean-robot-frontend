@@ -1,4 +1,5 @@
 import type { RuntimeTopicHealth } from './runtime'
+import type { Pose2D } from './map-editor'
 
 export interface OdometryState {
   robotId: string
@@ -21,6 +22,7 @@ export interface OdometryState {
   message: string
   warnings: string[]
   stampMs: number | null
+  robotPose?: Pose2D | null
   raw: Record<string, unknown>
 }
 

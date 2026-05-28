@@ -6,7 +6,7 @@ import type {
   ReactNode,
 } from 'react'
 
-import { Button, Space, Tabs, Tag, Typography } from 'antd'
+import { Button, Space, Tabs } from 'antd'
 import {
   AppstoreOutlined,
   CalendarOutlined,
@@ -17,6 +17,7 @@ import {
   LogoutOutlined,
   OrderedListOutlined,
   PlayCircleOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons'
 
 import {
@@ -26,37 +27,24 @@ import {
   logoutFromSiteGateway,
 } from './api/gateway/siteGatewayClient'
 import { LoginScreen } from './components/app/LoginScreen'
+import { SunnyBearLogo } from './components/app/SunnyBearLogo'
 import { AppFeedbackBanner } from './components/feedback/AppFeedbackBanner'
 import { AppLoadingState } from './components/feedback/AppLoadingState'
 import { RuntimeMonitorBridge } from './components/runtime/RuntimeMonitorBridge'
 import { getAppConfig, isModuleEnabled } from './config/appConfig'
+import { USE_MOCK_DATA } from './config/runtimeMode'
 import { useInputCapabilities } from './hooks/useInputCapabilities'
 import { useRosConnection } from './hooks/useRosConnection'
 import { useAppShellStore } from './stores/appShellStore'
-import type { AppModuleKey, CapabilityFlag, UserRole } from './types/appShell'
+import type { AppModuleKey, CapabilityFlag } from './types/appShell'
 import type { RuntimeMonitorOptions, RuntimeTopicKey } from './types/runtime'
-import {
-  getConnectionRecoveryHint,
-  getGatewayConnectionPresentation,
-  getRosConnectionPresentation,
-} from './utils/connectionStatus'
+import { getConnectionRecoveryHint } from './utils/connectionStatus'
 import './App.css'
 
-const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
-
 const RUNTIME_BRIDGE_TABS: AppModuleKey[] = [
-  'overview',
   'execution',
-  'runtime',
+  'dock-calibration',
   'actuator-control',
-]
-
-const OVERVIEW_RUNTIME_TOPIC_KEYS: RuntimeTopicKey[] = [
-  'taskState',
-  'executorState',
-  'dockSupplyState',
-  'batteryState',
-  'stationStatus',
 ]
 
 const EXECUTION_RUNTIME_TOPIC_KEYS: RuntimeTopicKey[] = [
@@ -72,16 +60,13 @@ const ACTUATOR_RUNTIME_TOPIC_KEYS: RuntimeTopicKey[] = [
 ]
 
 const RUNTIME_BRIDGE_OPTIONS: Partial<Record<AppModuleKey, RuntimeMonitorOptions>> = {
-  overview: {
-    topicKeys: OVERVIEW_RUNTIME_TOPIC_KEYS,
-    includeEndpointInfo: false,
-  },
   execution: {
     topicKeys: EXECUTION_RUNTIME_TOPIC_KEYS,
     includeEndpointInfo: false,
   },
-  runtime: {
-    includeEndpointInfo: true,
+  'dock-calibration': {
+    topicKeys: EXECUTION_RUNTIME_TOPIC_KEYS,
+    includeEndpointInfo: false,
   },
   'actuator-control': {
     topicKeys: ACTUATOR_RUNTIME_TOPIC_KEYS,
@@ -90,7 +75,14 @@ const RUNTIME_BRIDGE_OPTIONS: Partial<Record<AppModuleKey, RuntimeMonitorOptions
 }
 
 type PageModule = Record<string, unknown>
-type TabPageComponent = ComponentType | LazyExoticComponent<ComponentType>
+
+interface PageComponentProps {
+  isActive?: boolean
+}
+
+type TabPageComponent =
+  | ComponentType<PageComponentProps>
+  | LazyExoticComponent<ComponentType<PageComponentProps>>
 
 interface TabDefinition {
   key: AppModuleKey
@@ -122,7 +114,7 @@ function createTabPage(modulePath: string, exportName: string): TabPageComponent
       throw new Error(`Missing page export: ${exportName} from ${modulePath}`)
     }
 
-    return (module as Record<string, ComponentType>)[exportName]
+    return (module as Record<string, ComponentType<PageComponentProps>>)[exportName]
   }
 
   return lazy(async () => {
@@ -140,7 +132,7 @@ function createTabPage(modulePath: string, exportName: string): TabPageComponent
     }
 
     return {
-      default: component as ComponentType,
+      default: component as ComponentType<PageComponentProps>,
     }
   })
 }
@@ -175,6 +167,11 @@ const ExecutionControlPage = createTabPage(
   'ExecutionControlPage',
 )
 
+const DockCalibrationPage = createTabPage(
+  './pages/DockCalibrationPage.tsx',
+  'DockCalibrationPage',
+)
+
 const ActuatorControlPage = createTabPage(
   './pages/ActuatorControlPage.tsx',
   'ActuatorControlPage',
@@ -184,32 +181,6 @@ const RuntimeMonitoringPage = createTabPage(
   './pages/RuntimeMonitoringPage.tsx',
   'RuntimeMonitoringPage',
 )
-
-function getRoleLabel(role: UserRole) {
-  switch (role) {
-    case 'service':
-      return '服务'
-    case 'engineer':
-      return '工程师'
-    case 'admin':
-      return '管理员'
-    default:
-      return '操作员'
-  }
-}
-
-function getRoleColor(role: UserRole) {
-  switch (role) {
-    case 'engineer':
-      return 'purple'
-    case 'admin':
-      return 'red'
-    case 'service':
-      return 'blue'
-    default:
-      return 'default'
-  }
-}
 
 function TabPageFallback() {
   return <AppLoadingState className="app-tab-loading" message="页面加载中..." />
@@ -325,6 +296,15 @@ const TAB_DEFINITIONS: TabDefinition[] = [
     component: ExecutionControlPage,
   },
   {
+    key: 'dock-calibration',
+    label: '充电桩标定',
+    title: '充电桩标定页加载失败',
+    description: '充电桩标定页发生异常，可单独重试当前标签页。',
+    capability: 'dockCalibration',
+    icon: <ThunderboltOutlined />,
+    component: DockCalibrationPage,
+  },
+  {
     key: 'runtime',
     label: '运行监控',
     title: '运行监控页加载失败',
@@ -359,7 +339,6 @@ function App() {
   const { snapshot } = useRosConnection()
   const sessionStatus = useAppShellStore((state) => state.sessionStatus)
   const currentUser = useAppShellStore((state) => state.currentUser)
-  const currentRole = useAppShellStore((state) => state.currentRole)
   const grantedCapabilities = useAppShellStore((state) => state.grantedCapabilities)
   const authError = useAppShellStore((state) => state.authError)
   const setSession = useAppShellStore((state) => state.setSession)
@@ -369,9 +348,8 @@ function App() {
   const clearClientSession = useAppShellStore((state) => state.clearClientSession)
   const [activeKey, setActiveKey] = useState<AppModuleKey>('overview')
 
-  const gatewayTag = getGatewayConnectionPresentation(snapshot.gatewayStatus)
-  const rosTag = getRosConnectionPresentation(snapshot.status)
   const connectionHint = getConnectionRecoveryHint(snapshot)
+  const isOperatorSession = currentUser?.role === 'operator'
 
   useEffect(() => {
     if (USE_MOCK_DATA) {
@@ -411,16 +389,27 @@ function App() {
   }, [clearClientSession, setAuditEvents, setSession, setSessionStatus])
 
   const visibleTabs = useMemo(
-    () =>
-      TAB_DEFINITIONS.filter(
+    () => {
+      const roleVisibleTabs = TAB_DEFINITIONS.filter(
         (tab) => isModuleEnabled(tab.key) && grantedCapabilities.includes(tab.capability),
-      ),
-    [grantedCapabilities],
+      )
+
+      return isOperatorSession
+        ? roleVisibleTabs.filter((tab) => tab.key === 'overview')
+        : roleVisibleTabs
+    },
+    [grantedCapabilities, isOperatorSession],
   )
 
-  const resolvedActiveKey = visibleTabs.some((tab) => tab.key === activeKey)
-    ? activeKey
-    : (visibleTabs[0]?.key ?? 'overview')
+  const resolvedActiveKey = isOperatorSession
+    ? 'overview'
+    : visibleTabs.some((tab) => tab.key === activeKey)
+      ? activeKey
+      : (visibleTabs[0]?.key ?? 'overview')
+  const activeTabDefinition =
+    visibleTabs.find((tab) => tab.key === resolvedActiveKey) ?? visibleTabs[0]
+  const ActiveTabComponent = activeTabDefinition?.component
+  const shouldShowTabNav = !isOperatorSession && visibleTabs.length > 1
 
   const shouldMountRuntimeBridge = RUNTIME_BRIDGE_TABS.includes(resolvedActiveKey)
   const runtimeBridgeOptions = RUNTIME_BRIDGE_OPTIONS[resolvedActiveKey] ?? {}
@@ -478,6 +467,8 @@ function App() {
       data-testid="app-shell"
       className={[
         'app-shell',
+        `app-module-${resolvedActiveKey}`,
+        `app-role-${currentUser.role}`,
         isTouchCapable ? 'touch-ui' : '',
         isCoarsePointer ? 'coarse-pointer-ui' : '',
       ]
@@ -493,37 +484,19 @@ function App() {
 
       <header className="app-topbar">
         <div className="app-topbar-main">
-          <Space size="small" wrap>
-            <Tag color="gold">{config.siteName}</Tag>
-            <Tag>{config.robotId}</Tag>
-            <Tag color={gatewayTag.color}>{gatewayTag.label}</Tag>
-            <Tag color={rosTag.color}>{rosTag.label}</Tag>
-            <Tag color={getRoleColor(currentRole)}>{getRoleLabel(currentRole)}</Tag>
-            <Tag color="geekblue">{currentUser.displayName}</Tag>
-          </Space>
-
-          <Typography.Title data-testid="app-topbar-title" level={3}>
-            清洁机器人商用前端
-          </Typography.Title>
-
-          <Typography.Paragraph>
-            浏览器现在通过本地站点 Gateway 访问现场能力。高风险动作、审计和权限判断已经从
-            浏览器本地状态迁移到服务端会话边界。
-          </Typography.Paragraph>
+          <div className="app-brand-row">
+            <SunnyBearLogo compact />
+          </div>
         </div>
 
         <div className="app-topbar-actions">
           <Space size="small" wrap>
             {!USE_MOCK_DATA ? (
               <Button icon={<LogoutOutlined />} onClick={() => void handleLogout()}>
-                退出登录
+                {'\u9000\u51fa\u767b\u5f55'}
               </Button>
             ) : null}
           </Space>
-
-          <Typography.Text type="secondary">
-            版本 {__APP_VERSION__} | 构建 {__APP_BUILD_TIME__}
-          </Typography.Text>
         </div>
       </header>
 
@@ -534,34 +507,41 @@ function App() {
           title={connectionHint.title}
           description={connectionHint.description}
         />
-      ) : (
-        <AppFeedbackBanner
-          tone="info"
-          className="app-shell-banner"
-          title="站点 Gateway 已接管正式权限边界"
-          description="工程师能力、高风险命令和审计记录现在统一经过本地站点 Gateway。浏览器界面只负责展示和交互，不再承担真实认证或明文口令校验。"
+      ) : null}
+
+      {shouldShowTabNav ? (
+        <Tabs
+          className="app-tabs"
+          activeKey={resolvedActiveKey}
+          onChange={(key) => setActiveKey(key as AppModuleKey)}
+          items={visibleTabs.map((tab) => {
+            const TabComponent = tab.component
+
+            return {
+              key: tab.key,
+              label: (
+                <span className="app-tab-label">
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </span>
+              ),
+              children: renderTabPage(
+                tab.title,
+                tab.description,
+                <TabComponent isActive={tab.key === resolvedActiveKey} />,
+              ),
+            }
+          })}
         />
-      )}
-
-      <Tabs
-        className="app-tabs"
-        activeKey={resolvedActiveKey}
-        onChange={(key) => setActiveKey(key as AppModuleKey)}
-        items={visibleTabs.map((tab) => {
-          const TabComponent = tab.component
-
-          return {
-            key: tab.key,
-            label: (
-              <span className="app-tab-label">
-                {tab.icon}
-                <span>{tab.label}</span>
-              </span>
-            ),
-            children: renderTabPage(tab.title, tab.description, <TabComponent />),
-          }
-        })}
-      />
+      ) : ActiveTabComponent && activeTabDefinition ? (
+        <main className="app-single-module-content">
+          {renderTabPage(
+            activeTabDefinition.title,
+            activeTabDefinition.description,
+            <ActiveTabComponent isActive />,
+          )}
+        </main>
+      ) : null}
     </div>
   )
 }

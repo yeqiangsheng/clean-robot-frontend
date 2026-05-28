@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 
-import { Button, Card, Form, Input, Space, Switch, Typography } from 'antd'
+import { Button, Card, Form, Input, Switch } from 'antd'
 
 import { buildTimestampedMapName } from '../../utils/slam'
 
@@ -44,11 +44,6 @@ export function StartMappingForm({
 
   return (
     <Card title="开始建图" className="slam-card">
-      <Typography.Paragraph className="slam-card-copy">
-        通过 `/clean_robot_server/app/submit_slam_command(start_mapping)` 提交建图任务，
-        开始后页面会继续订阅 `/map` 实时地图。
-      </Typography.Paragraph>
-
       <Form<StartMappingFormValues>
         form={form}
         layout="vertical"
@@ -64,7 +59,7 @@ export function StartMappingForm({
           label="地图名称"
           rules={[{ required: true, message: '请输入建图输出的 map_name' }]}
         >
-          <Input disabled={disabled} placeholder={generatedMapName} />
+          <Input size="large" disabled={disabled} placeholder={generatedMapName} />
         </Form.Item>
 
         <Form.Item
@@ -75,18 +70,18 @@ export function StartMappingForm({
           <Switch disabled={disabled} />
         </Form.Item>
 
-        <Form.Item name="description" label="说明">
-          <Input disabled={disabled} placeholder="可选，用于记录本次建图原因" />
-        </Form.Item>
-
-        <Space wrap>
-          <Button type="primary" htmlType="submit" loading={loading} disabled={disabled}>
+        <div className="slam-form-actions">
+          <Button
+            block
+            size="large"
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            disabled={disabled}
+          >
             开始建图
           </Button>
-          <Button disabled={disabled || loading} onClick={() => form.resetFields()}>
-            重置
-          </Button>
-        </Space>
+        </div>
       </Form>
     </Card>
   )

@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 
-import { manageSchedule, manageTask } from '../../api/gateway/robotGateway'
+import { manageSchedule } from '../../api/gateway/scheduleGateway'
+import { manageTask } from '../../api/gateway/taskGateway'
 import { getTaskListQueryKey } from '../task-management/taskQueryKeys'
 import type { RosConnectionSnapshot } from '../../types/ros'
 
@@ -20,7 +21,7 @@ export function useScheduleManagementData(
   const servicesReady = snapshot.status !== 'connecting'
 
   const schedulesQuery = useQuery({
-    queryKey: ['schedule-management', 'schedules', snapshot.url, snapshot.sessionId],
+    queryKey: ['schedule-management', 'schedules', snapshot.sessionId],
     queryFn: () => manageSchedule({ action: 'list' }),
     enabled: servicesReady,
     retry: false,
@@ -52,7 +53,6 @@ export function useScheduleManagementData(
       'schedule-detail',
       selectedScheduleId,
       selectedSchedule?.taskId ?? 0,
-      snapshot.url,
       snapshot.sessionId,
     ],
     queryFn: () =>

@@ -11,6 +11,8 @@ This release candidate keeps the `0.1.0-rc.1` field-validated business workflows
 - Added Linux manual start/stop scripts: `start-frontend-prod.sh` and `stop-frontend-prod.sh`.
 - Added Ubuntu `systemd` install/uninstall scripts: `scripts/install-site-systemd.sh` and `scripts/uninstall-site-systemd.sh`.
 - Added robot-side deployment guide: `docs/ubuntu20_robot_deployment.md`.
+- Added factory bootstrap users for commissioning: `operator`, `service`, and `engineer`.
+- Added startup session clearing so robot power cycles return to the frontend login page.
 - Updated trial packaging so Linux scripts and Ubuntu deployment notes are included in the release bundle.
 - Normalized `.sh` line endings to LF in both git attributes and generated release packages to avoid Ubuntu shebang failures.
 - Updated `RELEASE-INFO.json` generation with Linux entry, install, start, stop, and systemd commands.

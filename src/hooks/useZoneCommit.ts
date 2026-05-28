@@ -1,9 +1,9 @@
-import { useMutation } from '@tanstack/react-query'
+﻿import { useMutation } from '@tanstack/react-query'
 
-import { commitCoverageRegion } from '../api/gateway/robotGateway'
+import { commitCoverageRegion } from '../api/gateway/mapWorkbenchGateway'
 import { useZoneEditorStore } from '../stores/zoneEditorStore'
 import type { MapAlignment, MapEntity } from '../types/map-editor'
-import type { RosServiceRequest } from '../types/ros'
+import type { GatewayPayload } from '../types/gateway'
 
 export function useZoneCommit(
   map: MapEntity | null,
@@ -15,7 +15,7 @@ export function useZoneCommit(
 
   const mutation = useMutation({
     mutationFn: (options: {
-      region: RosServiceRequest
+      region: GatewayPayload
       displayName: string
       profileName: string
       zoneId?: string | null

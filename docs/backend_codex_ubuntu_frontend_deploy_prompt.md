@@ -73,28 +73,46 @@ The recommended robot-local rosbridge URL is:
 ws://127.0.0.1:9090
 ```
 
-7. Configure first-login users if needed.
+7. Confirm bootstrap users.
 
-If the local Site Gateway SQLite user database is empty, edit:
+The release ships three factory bootstrap users for commissioning:
+
+```text
+operator / bulibusan1314
+service / bulibusan1314
+engineer / bulibusan1314
+```
+
+They are configured in:
 
 ```text
 site-gateway/site-config.json
 ```
 
-Add site-specific `bootstrapUsers` using strong passwords delivered securely by the field team. Do not use placeholder passwords such as `change-me-*`, and do not print real passwords in logs or final reports.
+Before customer delivery, decide whether to keep this factory password or replace it with site-controlled secrets. Do not print real customer passwords in logs or final reports.
 
-Example shape only:
+Shape:
 
 ```json
 "bootstrapUsers": [
   {
-    "username": "engineer",
-    "displayName": "现场工程师",
-    "role": "engineer",
-    "password": "<site-specific-strong-password>"
+    "username": "operator",
+    "displayName": "操作员",
+    "role": "operator",
+    "password": "bulibusan1314"
   }
 ]
 ```
+
+`bootstrapUsers` is synchronized at gateway startup. If a username already exists, the role and password from `site-config.json` will overwrite the local SQLite record for that username.
+
+Also confirm:
+
+```json
+"clearSessionsOnStartup": true
+```
+
+This is required for the touch screen to return to the frontend login page after a robot power cycle instead of restoring the previous authenticated page.
 
 8. Manual smoke start:
 
@@ -132,6 +150,10 @@ curl http://127.0.0.1:4173/api/health
 http://<robot-ip>:4173
 ```
 
+12. Power-cycle behavior:
+
+After logging in once, reboot or power-cycle the robot. The kiosk should open the frontend login page, not the previously authenticated overview page. If it restores the old session, check `site-gateway/site-config.json` and set `clearSessionsOnStartup` to `true`, then restart `clean-robot-site-gateway`.
+
 ## Acceptance Report Format
 
 Report back with:
@@ -142,12 +164,13 @@ Report back with:
 - Whether `systemctl status clean-robot-site-gateway` is active/running
 - `/api/health` response summary: `status`, `version`, `ros.status`, `ros.url`
 - Browser access URL
+- Whether power-cycle returns to the frontend login page
 - Any errors from `journalctl -u clean-robot-site-gateway`
 
 ## Safety Rules
 
 - Do not deploy the full frontend source workspace to the robot.
 - Do not run dev server commands such as `npm run dev` on the robot.
-- Do not commit or hardcode live robot IPs, passwords, tokens, or temporary field credentials.
+- Do not commit or hardcode live robot IPs, customer passwords, tokens, or temporary field credentials.
 - Do not modify main business service names or frontend source code during deployment.
 - Keep all changes limited to deployment configuration, service installation, and robot-local runtime checks.

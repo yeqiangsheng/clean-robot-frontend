@@ -68,11 +68,23 @@ export function bootstrapUsers(database, bootstrapUsers) {
     FROM users
     WHERE username = ?
   `)
+  const updateExisting = database.prepare(`
+    UPDATE users
+    SET display_name = ?, role = ?, password_hash = ?, updated_at = ?
+    WHERE id = ?
+  `)
 
   for (const user of bootstrapUsers) {
     const existingUser = findExisting.get(user.username)
 
     if (existingUser) {
+      updateExisting.run(
+        user.displayName,
+        user.role,
+        hashPassword(user.password),
+        now,
+        existingUser.id,
+      )
       continue
     }
 
@@ -89,6 +101,10 @@ export function bootstrapUsers(database, bootstrapUsers) {
 
 export function pruneExpiredSessions(database, now = Date.now()) {
   database.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now)
+}
+
+export function deleteAllSessions(database) {
+  database.prepare('DELETE FROM sessions').run()
 }
 
 export function pruneExpiredAuditLogs(database, retentionDays, now = Date.now()) {

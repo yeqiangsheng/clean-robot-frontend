@@ -3,25 +3,19 @@ import {
   Button,
   Card,
   Checkbox,
-  Descriptions,
   Form,
   Input,
   Select,
   Space,
   Switch,
   Tag,
-  Typography,
 } from 'antd'
-import { CheckCircleOutlined, ClockCircleOutlined, PlusOutlined } from '@ant-design/icons'
+import { CheckCircleOutlined, PlusOutlined } from '@ant-design/icons'
 
 import { AppEmptyState } from '../../components/feedback/AppEmptyState'
 import type { ScheduleDraftInput } from '../../types/schedule'
 import type { TaskEntity } from '../../types/task'
-import {
-  DOW_OPTIONS,
-  formatRepeatAfterFullCharge,
-  formatReturnToDock,
-} from './scheduleManagementDefaults'
+import { DOW_OPTIONS } from './scheduleManagementDefaults'
 
 interface ScheduleManagementEditorProps {
   form: FormInstance<ScheduleDraftInput>
@@ -29,9 +23,6 @@ interface ScheduleManagementEditorProps {
   isSubmitting: boolean
   tasks: TaskEntity[]
   selectedType: string | undefined
-  selectedTask: TaskEntity | null
-  planProfileLabel: string
-  sysProfileLabel: string
   onSubmit: () => void
   onCancel: () => void
 }
@@ -42,9 +33,6 @@ export function ScheduleManagementEditor({
   isSubmitting,
   tasks,
   selectedType,
-  selectedTask,
-  planProfileLabel,
-  sysProfileLabel,
   onSubmit,
   onCancel,
 }: ScheduleManagementEditorProps) {
@@ -165,36 +153,6 @@ export function ScheduleManagementEditor({
             </>
           ) : null}
 
-          {selectedTask ? (
-            <Card
-              size="small"
-              className="schedule-form-derived-card"
-              title={
-                <Space>
-                  <ClockCircleOutlined />
-                  <span>任务快照预览</span>
-                </Space>
-              }
-            >
-              <Descriptions column={1} size="small" colon={false}>
-                <Descriptions.Item label="任务名称">{selectedTask.name}</Descriptions.Item>
-                <Descriptions.Item label="地图">{selectedTask.mapName || '--'}</Descriptions.Item>
-                <Descriptions.Item label="区域">{selectedTask.zoneId || '--'}</Descriptions.Item>
-                <Descriptions.Item label="规划档位">{planProfileLabel}</Descriptions.Item>
-                <Descriptions.Item label="系统档位">{sysProfileLabel}</Descriptions.Item>
-                <Descriptions.Item label="清洁模式">
-                  {selectedTask.cleanMode || '--'}
-                </Descriptions.Item>
-                <Descriptions.Item label="结束后行为">
-                  {formatReturnToDock(selectedTask.returnToDockOnFinish)}
-                </Descriptions.Item>
-                <Descriptions.Item label="满电续扫">
-                  {formatRepeatAfterFullCharge(selectedTask.repeatAfterFullCharge)}
-                </Descriptions.Item>
-              </Descriptions>
-            </Card>
-          ) : null}
-
           <Space wrap>
             <Button
               type="primary"
@@ -206,10 +164,6 @@ export function ScheduleManagementEditor({
             </Button>
             <Button onClick={onCancel}>取消</Button>
           </Space>
-
-          <Typography.Paragraph className="schedule-footnote">
-            后端时区和调度器校验错误会直接展示，方便现场查看真实后端返回。
-          </Typography.Paragraph>
         </Form>
       )}
     </Card>

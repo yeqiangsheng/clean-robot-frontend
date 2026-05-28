@@ -8,11 +8,10 @@ import {
   fetchCurrentMap,
   fetchNoGoAreas,
   fetchVirtualWalls,
-} from '../api/gateway/robotGateway'
+} from '../api/gateway/mapWorkbenchGateway'
+import { USE_MOCK_DATA } from '../config/runtimeMode'
 import type { MapWorkbenchData } from '../types/map-editor'
 import type { RosConnectionSnapshot } from '../types/ros'
-
-const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
 
 function resolveFallbackMapName(
   ...collections: Array<Array<{ raw?: Record<string, unknown> }> | undefined>
@@ -34,7 +33,7 @@ export function useMapWorkbenchData(connection: RosConnectionSnapshot) {
   const servicesReady = USE_MOCK_DATA || connection.status !== 'connecting'
 
   const mapQuery = useQuery({
-    queryKey: ['workbench', 'map', connection.url, connection.sessionId, USE_MOCK_DATA],
+    queryKey: ['workbench', 'map', connection.sessionId, USE_MOCK_DATA],
     queryFn: fetchCurrentMap,
     enabled: servicesReady,
     retry: false,

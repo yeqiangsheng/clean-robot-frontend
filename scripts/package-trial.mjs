@@ -23,7 +23,7 @@ const version = packageJson.version ?? '0.0.0'
 
 const releaseRoot = resolve(repoRoot, 'release', `clean-robot-site-v${version}`)
 const releaseStartCommand = 'node ./site-gateway/server.mjs --host 127.0.0.1 --port 4173'
-const runtimeDependencyNames = ['ws']
+const runtimeDependencyNames = ['ws', 'roslib']
 const runtimeScriptNames = new Set([
   'install-site-service.ps1',
   'install-site-systemd.sh',
@@ -160,6 +160,40 @@ function createReleasePackageJson() {
   }
 }
 
+function collectRuntimePackageKeys(dependencyNames) {
+  const packageKeys = new Set()
+
+  function visitDependency(dependencyName) {
+    const packageKey = `node_modules/${dependencyName}`
+
+    if (packageKeys.has(packageKey)) {
+      return
+    }
+
+    const lockedDependency = packageLock.packages?.[packageKey]
+
+    if (!lockedDependency) {
+      throw new Error(`Cannot package trial release because package-lock is missing: ${packageKey}`)
+    }
+
+    packageKeys.add(packageKey)
+
+    for (const childName of Object.keys(lockedDependency.dependencies ?? {})) {
+      visitDependency(childName)
+    }
+
+    for (const childName of Object.keys(lockedDependency.optionalDependencies ?? {})) {
+      visitDependency(childName)
+    }
+  }
+
+  for (const dependencyName of dependencyNames) {
+    visitDependency(dependencyName)
+  }
+
+  return packageKeys
+}
+
 function createReleasePackageLock(releasePackageJson) {
   const packages = {
     '': {
@@ -168,15 +202,10 @@ function createReleasePackageLock(releasePackageJson) {
       dependencies: releasePackageJson.dependencies,
     },
   }
+  const runtimePackageKeys = collectRuntimePackageKeys(Object.keys(releasePackageJson.dependencies))
 
-  for (const dependencyName of Object.keys(releasePackageJson.dependencies)) {
-    const packageKey = `node_modules/${dependencyName}`
+  for (const packageKey of runtimePackageKeys) {
     const lockedDependency = packageLock.packages?.[packageKey]
-
-    if (!lockedDependency) {
-      throw new Error(`Cannot package trial release because package-lock is missing: ${packageKey}`)
-    }
-
     packages[packageKey] = lockedDependency
   }
 
@@ -196,6 +225,7 @@ function assertReleasePackageManifest() {
   const scriptNames = Object.keys(manifest.scripts ?? {})
   const dependencyNames = Object.keys(manifest.dependencies ?? {})
   const lockedPackageNames = Object.keys(lock.packages ?? {}).filter(Boolean)
+  const runtimePackageKeys = collectRuntimePackageKeys(runtimeDependencyNames)
 
   if (manifest.devDependencies) {
     findings.push('package.json still contains devDependencies')
@@ -224,7 +254,7 @@ function assertReleasePackageManifest() {
   }
 
   for (const lockedPackageName of lockedPackageNames) {
-    if (!runtimeDependencyNames.some((dependencyName) => lockedPackageName === `node_modules/${dependencyName}`)) {
+    if (!runtimePackageKeys.has(lockedPackageName)) {
       findings.push(`package-lock.json still contains non-runtime package: ${lockedPackageName}`)
     }
   }
@@ -281,6 +311,10 @@ const copyEntries = [
   ['stop-frontend-prod.sh', 'stop-frontend-prod.sh'],
   ['DEPLOYMENT.md', 'DEPLOYMENT.md'],
   ['docs/ubuntu20_robot_deployment.md', 'docs/ubuntu20_robot_deployment.md'],
+  [
+    'docs/ubuntu20_new_robot_batch_deployment.md',
+    'docs/ubuntu20_new_robot_batch_deployment.md',
+  ],
   [`docs/release_notes_${version}.md`, `docs/release_notes_${version}.md`],
   ['现场验收清单.md', '现场验收清单.md'],
   ['故障排查手册.md', '故障排查手册.md'],
@@ -339,7 +373,7 @@ writeFileSync(
         'Production startup no longer runs verify automatically.',
         'Editable UI config is served from public/app-config.json.',
         'Field ROS addresses should be set with SITE_ROSBRIDGE_URL, -RosbridgeUrl, or deployed site-config.json.',
-        'The site gateway proxies browser access to ROS through /ws/rosbridge.',
+        'Browser business traffic uses Site Gateway HTTP APIs; the gateway owns the rosbridge upstream connection.',
         'WinSW install and upgrade/rollback scripts are bundled under scripts/.',
         'Ubuntu 20.04 robot-side systemd install scripts are bundled under scripts/.',
       ],

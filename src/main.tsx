@@ -35,6 +35,9 @@ function renderApp(children: ReactNode) {
     <StrictMode>
       <ConfigProvider
         locale={zhCN}
+        getPopupContainer={(triggerNode) =>
+          triggerNode?.parentElement ?? document.body
+        }
         theme={{
           token: {
             colorPrimary: '#1f7a68',

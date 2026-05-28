@@ -5,8 +5,8 @@ import type { MapAlignment, MapEntity } from '../../types/map-editor'
 const requestWorkbenchCoveragePreview = vi.hoisted(() => vi.fn())
 const requestWorkbenchCoverageCommit = vi.hoisted(() => vi.fn())
 
-vi.mock('./siteGatewayClient', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./siteGatewayClient')>()
+vi.mock('./siteGatewayMapClient', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./siteGatewayMapClient')>()
 
   return {
     ...actual,
@@ -88,7 +88,7 @@ describe('map workbench gateway zone actions', () => {
   })
 
   it('sends coverage preview through canonical site gateway fields', async () => {
-    const { previewCoverageRegion } = await import('./robotGateway')
+    const { previewCoverageRegion } = await import('./mapWorkbenchGateway')
     requestWorkbenchCoveragePreview.mockResolvedValue({
       display_preview_path: displayRegion,
       estimated_length_m: 12.5,
@@ -115,7 +115,7 @@ describe('map workbench gateway zone actions', () => {
   })
 
   it('sends coverage commit through canonical site gateway fields', async () => {
-    const { commitCoverageRegion } = await import('./robotGateway')
+    const { commitCoverageRegion } = await import('./mapWorkbenchGateway')
     requestWorkbenchCoverageCommit.mockResolvedValue({
       zone_id: 'zone-live-1',
       zone_version: 3,

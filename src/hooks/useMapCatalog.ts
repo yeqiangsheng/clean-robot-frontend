@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 
-import { fetchMapCatalog } from '../api/gateway/robotGateway'
+import { fetchMapCatalog } from '../api/gateway/mapWorkbenchGateway'
 import { useRosConnection } from './useRosConnection'
 import type { MapCatalogEntry } from '../types/mapCatalog'
 
@@ -11,7 +11,7 @@ export function useMapCatalog() {
   const servicesReady = snapshot.status !== 'connecting'
 
   const query = useQuery({
-    queryKey: ['map-catalog', snapshot.url, snapshot.sessionId],
+    queryKey: ['map-catalog', snapshot.sessionId],
     queryFn: fetchMapCatalog,
     enabled: servicesReady,
     retry: false,
@@ -79,6 +79,7 @@ export function useMapCatalog() {
     defaultSelectableEntry,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
+    refetch: query.refetch,
     error: query.error instanceof Error ? query.error : null,
   }
 }

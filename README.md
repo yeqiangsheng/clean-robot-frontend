@@ -13,7 +13,7 @@ The frontend keeps the existing React/Vite page shell and operator workflows, wh
 - audit persistence
 - high-risk command routing
 - diagnostics export
-- ROS / rosbridge proxying
+- ROS / rosbridge API mediation
 - Windows service hosting
 - packaged upgrade and rollback flows
 
@@ -37,7 +37,7 @@ The frontend keeps the existing React/Vite page shell and operator workflows, wh
 
 ```text
 src/                 React frontend shell and business pages
-site-gateway/        Local site gateway for auth, audit, ROS proxying, and static hosting
+site-gateway/        Local site gateway for auth, audit, ROS API mediation, and static hosting
 public/              Public UI config served at runtime
 scripts/             Packaging, service install, upgrade, and rollback scripts
 tests/e2e/           Playwright smoke tests
@@ -54,7 +54,9 @@ Two config files now serve different purposes:
   Local site runtime config. Includes `rosbridgeUrl`, role policy, session retention, and optional bootstrap users.
 
 The browser should no longer expose real ROS topology or front-end-side unlock policies.
-For field deployments, keep repository defaults generic, override the live rosbridge address with `SITE_ROSBRIDGE_URL` or the deployed `site-config.json`, and provide site-specific bootstrap passwords only during installation.
+For field deployments, keep repository network settings generic, override the live rosbridge address with `SITE_ROSBRIDGE_URL` or the deployed `site-config.json`, and decide whether to keep or replace the factory bootstrap users in the deployed `site-config.json`.
+
+The default `clearSessionsOnStartup=true` makes robot power cycles return to the frontend login page instead of restoring the previous authenticated session.
 
 ## Local Development
 
@@ -81,7 +83,7 @@ Default local URLs:
 - frontend: `http://127.0.0.1:5173`
 - site gateway: `http://127.0.0.1:4180`
 
-Vite proxies `/api/*` and `/ws/*` to the local site gateway during development.
+Vite proxies `/api/*` to the local site gateway during development.
 
 ## Verification
 
@@ -147,7 +149,7 @@ The packaged bundle includes:
 - deployment and troubleshooting docs
 - `RELEASE-INFO.json`
 
-For robot-side Ubuntu 20.04 deployment, see [`docs/ubuntu20_robot_deployment.md`](docs/ubuntu20_robot_deployment.md). The recommended field topology is browser/tablet -> robot IP -> local Site Gateway -> robot-local rosbridge.
+For robot-side Ubuntu 20.04 deployment, see [`docs/ubuntu20_robot_deployment.md`](docs/ubuntu20_robot_deployment.md). For a fresh robot or five-unit batch rollout, use [`docs/ubuntu20_new_robot_batch_deployment.md`](docs/ubuntu20_new_robot_batch_deployment.md). The recommended field topology is browser/tablet -> robot IP -> local Site Gateway -> robot-local rosbridge.
 
 ## Production Startup
 
@@ -226,7 +228,7 @@ The upgrade script:
 
 This repository now has:
 
-- a local site gateway with session login, audit persistence, diagnostics export, and rosbridge proxying
+- a local site gateway with session login, audit persistence, diagnostics export, and ROS API mediation
 - frontend session-driven role/capability rendering
 - high-risk write paths moved behind gateway APIs
 - a releasable trial package flow
@@ -237,7 +239,7 @@ This repository now has:
 Still planned for later phases:
 
 - fuller gateway test coverage
-- more read-path migration off browser-side ROS subscriptions
+- continued hardening of gateway read-path contracts
 - stronger long-term SQLite/runtime hardening
 - multi-site and cloud platform capabilities
 
@@ -246,4 +248,5 @@ Still planned for later phases:
 - [DEPLOYMENT.md](DEPLOYMENT.md)
 - [现场验收清单.md](现场验收清单.md)
 - [故障排查手册.md](故障排查手册.md)
+- [docs/ubuntu20_new_robot_batch_deployment.md](docs/ubuntu20_new_robot_batch_deployment.md)
 - [docs/README.md](docs/README.md)

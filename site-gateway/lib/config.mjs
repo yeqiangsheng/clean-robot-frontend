@@ -44,6 +44,18 @@ function readPositiveInteger(value, field, fallback) {
   return value
 }
 
+function readBoolean(value, field, fallback) {
+  if (value === undefined) {
+    return fallback
+  }
+
+  if (typeof value !== 'boolean') {
+    throw new Error(`${field} must be a boolean when provided.`)
+  }
+
+  return value
+}
+
 function readRosbridgeUrl(value, field) {
   const url = readString(value, field)
   const parsed = new URL(url)
@@ -60,6 +72,11 @@ function isUnsafeBootstrapPassword(password) {
 
   return (
     normalized.startsWith('change-me') ||
+    normalized.startsWith('replace_with') ||
+    normalized.startsWith('replace-with') ||
+    normalized.includes('site_specific') ||
+    normalized.includes('site-specific') ||
+    normalized.startsWith('<') ||
     [
       'password',
       'password123',
@@ -176,6 +193,7 @@ export function normalizeSiteConfig(value) {
     enabledModules: normalizeEnabledModules(value.enabledModules),
     rolePolicy: normalizeRolePolicy(value.rolePolicy),
     sessionTtlHours: readPositiveInteger(value.sessionTtlHours, 'sessionTtlHours', 12),
+    clearSessionsOnStartup: readBoolean(value.clearSessionsOnStartup, 'clearSessionsOnStartup', true),
     logRetentionDays: readPositiveInteger(value.logRetentionDays, 'logRetentionDays', 14),
     mapImportPbstreamDir: readOptionalString(
       value.mapImportPbstreamDir,

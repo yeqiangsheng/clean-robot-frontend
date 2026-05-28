@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Button,
   Card,
-  Descriptions,
   Select,
   Space,
   Tag,
@@ -18,12 +17,11 @@ import {
   StopOutlined,
 } from '@ant-design/icons'
 
-import { executeTaskCommand, manageTask } from '../api/gateway/robotGateway'
+import { executeTaskCommand } from '../api/gateway/executionGateway'
+import { manageTask } from '../api/gateway/taskGateway'
 import { AppEmptyState } from '../components/feedback/AppEmptyState'
 import { AppFeedbackBanner } from '../components/feedback/AppFeedbackBanner'
-import { RosbridgeEndpointControl } from '../components/ros/RosbridgeEndpointControl'
-import { ResolvedSystemReadinessCard } from '../components/readiness/SystemReadinessCard'
-import { LiveCommandContextCard } from '../components/runtime/LiveCommandContextCard'
+import { ExecutionProgressCard } from '../components/runtime/ExecutionProgressCard'
 import { getTaskListQueryKey } from '../features/task-management/taskQueryKeys'
 import { useRosConnection } from '../hooks/useRosConnection'
 import { useSlamWorkflowState } from '../hooks/useSlamWorkflowState'
@@ -76,7 +74,6 @@ const UI_TEXT = {
   noTasksDescription:
     '\u8bf7\u5148\u5728\u4efb\u52a1\u7ba1\u7406\u9875\u521b\u5efa\u5e76\u542f\u7528\u4efb\u52a1\uff0c\u518d\u56de\u5230\u8fd9\u91cc\u6267\u884c\u3002',
   liveContextTitle: '\u5b9e\u65f6\u6267\u884c\u4e0a\u4e0b\u6587',
-  readinessTitle: '\u4efb\u52a1\u542f\u52a8\u524d readiness',
   returnDeferredNotice:
     '\u672c\u671f\u6309\u53d7\u63a7 live \u9a8c\u6536\u8fb9\u754c\uff0c\u6267\u884c\u9875\u6682\u4e0d\u5f00\u653e RETURN\u3002',
   selectTaskStartMessage:
@@ -99,23 +96,6 @@ const UI_TEXT = {
     '\u8bf7\u5148\u9009\u62e9\u4efb\u52a1\u540d\u79f0\u3002\u524d\u7aef\u4f1a\u81ea\u52a8\u5e26\u4e0a\u8be5\u4efb\u52a1\u7684\u6b63\u5f0f task_id\uff0c\u518d\u6267\u884c START\u3002',
   slamBusyReasonPrefix: '\u5f53\u524d SLAM \u4f5c\u4e1a\u4ecd\u5728\u6267\u884c\uff1a',
 } as const
-
-function getConnectionTag(status: string) {
-  switch (status) {
-    case 'connected':
-      return { color: 'success', label: UI_TEXT.connectionConnected }
-    case 'connecting':
-      return { color: 'processing', label: UI_TEXT.connectionConnecting }
-    case 'error':
-      return { color: 'error', label: UI_TEXT.connectionError }
-    case 'mock':
-      return { color: 'purple', label: UI_TEXT.connectionMock }
-    case 'closed':
-      return { color: 'warning', label: UI_TEXT.connectionClosed }
-    default:
-      return { color: 'default', label: UI_TEXT.connectionIdle }
-  }
-}
 
 function normalizeExecutionToken(value: string | null | undefined) {
   return (value ?? '').trim().toUpperCase()
@@ -194,16 +174,6 @@ type ExecutionReadinessState = SystemReadiness | null
 const EXECUTION_SETTLE_RETRY_COUNT = 12
 const EXECUTION_SETTLE_DELAY_MS = 1_000
 
-type StartReadinessFeedback = {
-  status: 'passed' | 'blocked' | 'failed'
-  checkedAt: number
-  taskId: number
-  title: string
-  description: string
-  blockingReasons: string[]
-  warnings: string[]
-}
-
 function doesCommandStateMatch(
   command: ExecutionCommandName,
   readiness: ExecutionReadinessState,
@@ -232,30 +202,6 @@ function waitForExecutionSettle(delayMs: number) {
   })
 }
 
-function formatReadinessFeedbackTime(value: number) {
-  return new Date(value).toLocaleString('zh-CN', { hour12: false })
-}
-
-function getNonBlockingReadinessWarnings(readiness: ExecutionReadinessState) {
-  if (!readiness) {
-    return []
-  }
-
-  const checkWarnings = (readiness.checks ?? [])
-    .filter((check) => {
-      const level = check.level.trim().toLowerCase()
-      return (
-        check.key === 'station_status' ||
-        ['warn', 'warning', 'degraded', 'info', 'notice'].includes(level)
-      )
-    })
-    .map((check) =>
-      check.summary.trim().length > 0 ? `${check.key}: ${check.summary}` : check.key,
-    )
-
-  return Array.from(new Set([...(readiness.warnings ?? []), ...checkWarnings]))
-}
-
 const commandConfig: Array<{
   command: ExecutionCommandName
   title: string
@@ -270,22 +216,12 @@ const commandConfig: Array<{
 ]
 
 function buildTaskOptionLabel(task: TaskEntity) {
-  const parts = [task.name.trim() || `task-${task.id}`]
-  if (task.mapName.trim()) {
-    parts.push(task.mapName.trim())
-  }
-  parts.push(`#${task.id}`)
-  if (!task.enabled) {
-    parts.push(UI_TEXT.disabledTask)
-  }
-  return parts.join(' / ')
+  return task.name.trim() || `task-${task.id}`
 }
 
 export function ExecutionControlPage() {
-  const { snapshot, defaultUrl, connect } = useRosConnection()
+  const { snapshot, reconnect } = useRosConnection()
   const [activeCommand, setActiveCommand] = useState<ExecutionCommandName | null>(null)
-  const [lastStartReadinessFeedback, setLastStartReadinessFeedback] =
-    useState<StartReadinessFeedback | null>(null)
   const focusedTaskId = useExecutionSessionStore((state) => state.focusedTaskId)
   const focusedTaskName = useExecutionSessionStore((state) => state.focusedTaskName)
   const lastResult = useExecutionSessionStore((state) => state.lastResult)
@@ -295,7 +231,6 @@ export function ExecutionControlPage() {
   const setLastResult = useExecutionSessionStore((state) => state.setLastResult)
   const setTransportError = useExecutionSessionStore((state) => state.setTransportError)
 
-  const connectionTag = getConnectionTag(snapshot.status)
   const servicesReady = snapshot.isConnected || snapshot.status === 'mock'
   const tasksQuery = useQuery({
     queryKey: getTaskListQueryKey(snapshot),
@@ -334,36 +269,6 @@ export function ExecutionControlPage() {
     return parts.length > 0 ? parts.join(' / ') : '--'
   }, [activeSlamJobId, activeSlamJobPhase, activeSlamJobStatus])
 
-  const startBlockReason = useMemo(() => {
-    if (!selectedTask) {
-      return UI_TEXT.autoTaskIdReason
-    }
-    if (hasActiveSlamJob) {
-      return `${UI_TEXT.slamBusyReasonPrefix}${slamJobSummary}`
-    }
-    return readinessGate.primaryBlockReason
-  }, [hasActiveSlamJob, readinessGate.primaryBlockReason, selectedTask, slamJobSummary])
-
-  const startBlockingReasons = useMemo(() => {
-    if (!selectedTask) {
-      return [UI_TEXT.autoTaskIdReason]
-    }
-    if (hasActiveSlamJob) {
-      return [`${UI_TEXT.slamBusyReasonPrefix}${slamJobSummary}`]
-    }
-
-    return [
-      ...(readinessGate.effectiveReadiness?.blockingReasons ?? []),
-      ...readinessGate.blockingCheckSummaries,
-    ].filter((reason, index, collection) => reason && collection.indexOf(reason) === index)
-  }, [
-    hasActiveSlamJob,
-    readinessGate.blockingCheckSummaries,
-    readinessGate.effectiveReadiness?.blockingReasons,
-    selectedTask,
-    slamJobSummary,
-  ])
-
   const canStart = useMemo(
     () => servicesReady && selectedTask !== null && readinessGate.canIssueStart && !hasActiveSlamJob,
     [hasActiveSlamJob, readinessGate.canIssueStart, selectedTask, servicesReady],
@@ -399,8 +304,8 @@ export function ExecutionControlPage() {
     }
   }, [focusedTaskName, selectedTask, setFocusedTaskName])
 
-  const handleReconnect = async (url?: string) => {
-    await connect((url ?? snapshot.url) || defaultUrl)
+  const handleReconnect = async () => {
+    await reconnect()
     await Promise.all([
       readinessGate.serviceQuery.refetch(),
       slamState.refresh(),
@@ -417,7 +322,6 @@ export function ExecutionControlPage() {
     setFocusedTaskName(nextTask?.name ?? null)
     setLastResult(null)
     setTransportError(null)
-    setLastStartReadinessFeedback(null)
   }
 
   const refreshExecutionReadiness = async (
@@ -453,7 +357,6 @@ export function ExecutionControlPage() {
           return
         }
         if (hasActiveSlamJob) {
-          setTransportError(`${UI_TEXT.startBlockedPrefix}${startBlockReason}`)
           return
         }
         const readinessResult = await readinessGate.serviceQuery.refetch()
@@ -464,47 +367,12 @@ export function ExecutionControlPage() {
           readinessGate.effectiveReadiness
         if (!servicePayload?.success) {
           const message = servicePayload?.message || UI_TEXT.startReadinessFailed
-          setLastStartReadinessFeedback({
-            status: 'failed',
-            checkedAt: Date.now(),
-            taskId: effectiveTaskId,
-            title: UI_TEXT.startPrecheckFailedTitle,
-            description: message,
-            blockingReasons: [message],
-            warnings: getNonBlockingReadinessWarnings(latestReadiness),
-          })
           setTransportError(message)
           return
         }
         if (!latestReadiness?.canStartTask) {
-          const blockingReasons =
-            latestReadiness?.blockingReasons.length
-              ? latestReadiness.blockingReasons
-              : readinessGate.blockingCheckSummaries.length
-                ? readinessGate.blockingCheckSummaries
-                : [UI_TEXT.startBlockedDefaultReason]
-          const reason = blockingReasons.join(' | ')
-          setLastStartReadinessFeedback({
-            status: 'blocked',
-            checkedAt: Date.now(),
-            taskId: effectiveTaskId,
-            title: UI_TEXT.startPrecheckBlockedTitle,
-            description: reason,
-            blockingReasons,
-            warnings: getNonBlockingReadinessWarnings(latestReadiness),
-          })
-          setTransportError(`${UI_TEXT.startReadinessBlockedPrefix}${reason}`)
           return
         }
-        setLastStartReadinessFeedback({
-          status: 'passed',
-          checkedAt: Date.now(),
-          taskId: effectiveTaskId,
-          title: UI_TEXT.startPrecheckPassedTitle,
-          description: UI_TEXT.startPrecheckPassedDescription,
-          blockingReasons: [],
-          warnings: getNonBlockingReadinessWarnings(latestReadiness),
-        })
       }
       const result = await executeTaskCommand(command, effectiveTaskId)
       setLastResult(result)
@@ -532,17 +400,7 @@ export function ExecutionControlPage() {
       <header className="execution-page-header">
         <div>
           <Typography.Title level={2}>{UI_TEXT.title}</Typography.Title>
-          <Typography.Paragraph>{UI_TEXT.intro}</Typography.Paragraph>
         </div>
-        <Space size="middle" wrap>
-          <Tag color="gold">{UI_TEXT.interfaceTag}</Tag>
-          <Tag color={connectionTag.color}>{connectionTag.label}</Tag>
-          <RosbridgeEndpointControl
-            snapshot={snapshot}
-            defaultUrl={defaultUrl}
-            onConnect={handleReconnect}
-          />
-        </Space>
       </header>
 
       {snapshot.status === 'error' && snapshot.lastError ? (
@@ -585,56 +443,9 @@ export function ExecutionControlPage() {
         />
       ) : null}
 
-      {lastStartReadinessFeedback ? (
+      {lastResult && !lastResult.success ? (
         <AppFeedbackBanner
-          tone={
-            lastStartReadinessFeedback.status === 'passed'
-              ? 'success'
-              : lastStartReadinessFeedback.status === 'blocked'
-                ? 'warning'
-                : 'error'
-          }
-          title={lastStartReadinessFeedback.title}
-          description={
-            <Space orientation="vertical" size={6}>
-              <Typography.Text>{lastStartReadinessFeedback.description}</Typography.Text>
-              <Typography.Text type="secondary">
-                复查时间：{formatReadinessFeedbackTime(lastStartReadinessFeedback.checkedAt)}
-                {' | '}task_id={lastStartReadinessFeedback.taskId}
-              </Typography.Text>
-              {lastStartReadinessFeedback.blockingReasons.length > 0 ? (
-                <div>
-                  <Typography.Text strong>{UI_TEXT.blockingItemsLabel}</Typography.Text>
-                  <ul className="execution-scope-list">
-                    {lastStartReadinessFeedback.blockingReasons.map((reason) => (
-                      <li key={reason}>{reason}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              <div>
-                <Typography.Text strong>{UI_TEXT.nonBlockingWarningsLabel}</Typography.Text>
-                {lastStartReadinessFeedback.warnings.length > 0 ? (
-                  <ul className="execution-scope-list">
-                    {lastStartReadinessFeedback.warnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <Typography.Paragraph className="execution-footnote">
-                    {UI_TEXT.noNonBlockingWarnings}
-                  </Typography.Paragraph>
-                )}
-              </div>
-            </Space>
-          }
-          className="execution-banner"
-        />
-      ) : null}
-
-      {lastResult ? (
-        <AppFeedbackBanner
-          tone={lastResult.success ? 'success' : 'warning'}
+          tone="warning"
           title={`${lastResult.command}${UI_TEXT.commandReturnedSuffix}`}
           description={lastResult.message || '(empty backend message)'}
           className="execution-banner"
@@ -664,113 +475,7 @@ export function ExecutionControlPage() {
                 />
               </div>
 
-              <Descriptions column={1} size="small" colon={false}>
-                <Descriptions.Item label={UI_TEXT.selectedTaskLabel}>
-                  {selectedTask?.name || '--'}
-                </Descriptions.Item>
-                <Descriptions.Item label={UI_TEXT.currentTaskIdLabel}>
-                  {effectiveTaskId > 0 ? effectiveTaskId : '--'}
-                </Descriptions.Item>
-                <Descriptions.Item label={UI_TEXT.canStartTaskLabel}>
-                  {selectedTask === null
-                    ? '系统基线'
-                    : readinessGate.effectiveReadiness
-                      ? readinessGate.effectiveReadiness.canStartTask
-                        ? '允许'
-                        : '阻断'
-                      : '--'}
-                </Descriptions.Item>
-                <Descriptions.Item label={UI_TEXT.taskMapLabel}>
-                  {selectedTask?.mapName || readinessGate.effectiveReadiness?.taskMapName || '--'}
-                </Descriptions.Item>
-                <Descriptions.Item label={UI_TEXT.activeMapLabel}>
-                  {readinessGate.effectiveReadiness?.activeMapName || '--'}
-                </Descriptions.Item>
-                <Descriptions.Item label={UI_TEXT.runtimeMapLabel}>
-                  {readinessGate.effectiveReadiness?.runtimeMapName || '--'}
-                </Descriptions.Item>
-                <Descriptions.Item label={UI_TEXT.executorStateLabel}>
-                  {readinessGate.effectiveReadiness?.executorState || '--'}
-                </Descriptions.Item>
-                <Descriptions.Item label={UI_TEXT.slamJobLabel}>
-                  {hasActiveSlamJob ? slamJobSummary : '--'}
-                </Descriptions.Item>
-              </Descriptions>
-
-              {selectedTask === null ? (
-                <AppFeedbackBanner
-                  tone="info"
-                  title={UI_TEXT.selectTaskFirst}
-                  description={UI_TEXT.selectTaskFirstDescription}
-                />
-              ) : !canStart ? (
-                <AppFeedbackBanner
-                  tone="warning"
-                  title={UI_TEXT.startBlocked}
-                  description={startBlockReason}
-                />
-              ) : (
-                <AppFeedbackBanner
-                  tone="success"
-                  title={UI_TEXT.startReady}
-                  description={UI_TEXT.startReadyDescription}
-                />
-              )}
-
-              {selectedTask !== null ? (
-                <Card size="small" className="execution-inner-card" title="START 门禁解释">
-                  <Space orientation="vertical" size="small" style={{ width: '100%' }}>
-                    <div>
-                      <Typography.Text strong>{UI_TEXT.blockingItemsLabel}</Typography.Text>
-                      {canStart ? (
-                        <Typography.Paragraph className="execution-footnote">
-                          当前没有阻塞项。点击 START 时仍会重新查询 readiness。
-                        </Typography.Paragraph>
-                      ) : startBlockingReasons.length > 0 ? (
-                        <ul className="execution-scope-list">
-                          {startBlockingReasons.map((reason) => (
-                            <li key={reason}>{reason}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <Typography.Paragraph className="execution-footnote">
-                          暂未拿到后端阻塞明细。
-                        </Typography.Paragraph>
-                      )}
-                    </div>
-
-                    <div>
-                      <Typography.Text strong>{UI_TEXT.nonBlockingWarningsLabel}</Typography.Text>
-                      {readinessGate.allWarningSummaries.length > 0 ? (
-                        <ul className="execution-scope-list">
-                          {readinessGate.allWarningSummaries.map((warning) => (
-                            <li key={warning}>{warning}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <Typography.Paragraph className="execution-footnote">
-                          {UI_TEXT.noNonBlockingWarnings}
-                        </Typography.Paragraph>
-                      )}
-                    </div>
-                  </Space>
-                </Card>
-              ) : null}
-
-              {!tasksQuery.isLoading && (tasksQuery.data?.length ?? 0) === 0 ? (
-                <AppEmptyState
-                  title={UI_TEXT.noTasksTitle}
-                  description={UI_TEXT.noTasksDescription}
-                  actionLabel="刷新任务列表"
-                  onAction={() => void tasksQuery.refetch()}
-                />
-              ) : null}
-
-              <Typography.Paragraph className="execution-footnote">
-                {UI_TEXT.returnDeferredNotice}
-              </Typography.Paragraph>
-
-              <Space wrap size="small">
+              <div className="execution-command-grid">
                 {commandConfig.map((entry) => {
                   const commandAllowed =
                     entry.command === 'START'
@@ -788,6 +493,8 @@ export function ExecutionControlPage() {
                   return (
                     <Button
                       key={entry.command}
+                      className="execution-command-button"
+                      size="large"
                       type={entry.styleType}
                       danger={entry.danger}
                       icon={entry.icon}
@@ -799,21 +506,33 @@ export function ExecutionControlPage() {
                     </Button>
                   )
                 })}
-              </Space>
+              </div>
+
+              {selectedTask === null || canStart ? (
+                <div className="execution-command-status">
+                  {selectedTask === null ? (
+                    <Tag>{UI_TEXT.selectTaskFirst}</Tag>
+                  ) : (
+                    <Tag color="green">{UI_TEXT.startReady}</Tag>
+                  )}
+                </div>
+              ) : null}
+
+              {!tasksQuery.isLoading && (tasksQuery.data?.length ?? 0) === 0 ? (
+                <AppEmptyState
+                  title={UI_TEXT.noTasksTitle}
+                  description={UI_TEXT.noTasksDescription}
+                  actionLabel="刷新任务列表"
+                  onAction={() => void tasksQuery.refetch()}
+                />
+              ) : null}
             </Space>
           </Card>
-
-          <LiveCommandContextCard title={UI_TEXT.liveContextTitle} selectedTask={selectedTask} />
         </aside>
 
-        <section className="execution-column">
-          <ResolvedSystemReadinessCard
-            taskId={effectiveTaskId}
-            selectedTask={selectedTask}
-            title={UI_TEXT.readinessTitle}
-            readinessState={readinessGate}
-          />
-        </section>
+        <main className="execution-column">
+          <ExecutionProgressCard className="execution-card" />
+        </main>
       </div>
     </div>
   )

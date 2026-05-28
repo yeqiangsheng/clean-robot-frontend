@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 
-import { queryProfileCatalog } from '../api/gateway/robotGateway'
+import { queryProfileCatalog } from '../api/gateway/robotStatusGateway'
 import { useRosConnection } from './useRosConnection'
 import type { ProfileCatalogEntry, ProfileKind } from '../types/profileCatalog'
 import {
@@ -46,7 +46,6 @@ export function useProfileCatalog({
       profileKind,
       'enabled',
       normalizedMapName || 'all-maps',
-      snapshot.url,
       snapshot.sessionId,
     ],
     queryFn: () =>
@@ -73,7 +72,6 @@ export function useProfileCatalog({
       profileKind,
       'all',
       normalizedMapName || 'all-maps',
-      snapshot.url,
       snapshot.sessionId,
     ],
     queryFn: () =>

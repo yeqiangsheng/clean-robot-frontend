@@ -32,6 +32,6 @@
 
 ## Remaining Watch Items
 
-- Keep browser-side ROS business fallbacks confined to low-level compatibility boundaries.
+- Browser-side ROS business fallbacks have been removed; keep business IO on the Site Gateway path.
 - Continue spot-checking MapWorkbench edit/delete flows for no-go areas, coverage zones, and virtual walls before final release packaging.
 - Run the formal build and legacy-boundary checks before creating the final release package.

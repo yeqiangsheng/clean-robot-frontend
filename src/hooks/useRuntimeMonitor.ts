@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 
-import { fetchGatewayRuntimeTopicSnapshots } from '../api/gateway/siteGatewayClient'
-import { getRuntimeTopicConfigs, RUNTIME_TOPIC_CONFIGS } from '../api/ros/runtimeServices'
+import { fetchGatewayRuntimeTopicSnapshots } from '../api/gateway/siteGatewayStatusClient'
+import { getRuntimeTopicConfigs, RUNTIME_TOPIC_CONFIGS } from '../api/contracts/runtimeTopicConfigs'
 import type { RosConnectionSnapshot } from '../types/ros'
 import type {
   RuntimeMonitorOptions,
@@ -41,6 +41,10 @@ function getTopicHealth(
   }
 
   if (topic.lastMessageAt === null) {
+    if (topic.messageCount > 0) {
+      return 'live'
+    }
+
     return topic.publishers.length > 0 || topic.messageType ? 'waiting' : 'unavailable'
   }
 

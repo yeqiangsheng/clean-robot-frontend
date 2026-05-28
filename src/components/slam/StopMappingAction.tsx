@@ -1,4 +1,4 @@
-import { Button, Card, Popconfirm, Space, Typography } from 'antd'
+import { Button, Card, Popconfirm } from 'antd'
 import { WarningOutlined } from '@ant-design/icons'
 
 type StopMappingActionProps = {
@@ -18,12 +18,7 @@ export function StopMappingAction({
       className="slam-card slam-danger-card"
       extra={<WarningOutlined />}
     >
-      <Typography.Paragraph className="slam-card-copy">
-        通过 `/clean_robot_server/app/submit_slam_command(stop_mapping)` 提交停止请求，
-        用于结束当前 mapping 流程。
-      </Typography.Paragraph>
-
-      <Space wrap>
+      <div className="slam-form-actions">
         <Popconfirm
           title="确认停止建图？"
           description="停止后会结束当前 mapping 流程。如需保留结果，请先执行保存地图。"
@@ -32,11 +27,11 @@ export function StopMappingAction({
           onConfirm={onConfirm}
           disabled={disabled}
         >
-          <Button danger disabled={disabled} loading={loading}>
+          <Button block size="large" danger disabled={disabled} loading={loading}>
             停止建图
           </Button>
         </Popconfirm>
-      </Space>
+      </div>
     </Card>
   )
 }

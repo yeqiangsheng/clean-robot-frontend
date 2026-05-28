@@ -4,16 +4,14 @@ import {
   fetchGatewayHealth,
   requestGatewayRosReconnect,
 } from '../api/gateway/siteGatewayClient'
-import { getDefaultRosbridgeUrl } from '../api/ros/connectionUrl'
+import { USE_MOCK_DATA } from '../config/runtimeMode'
 import type { RosConnectionSnapshot } from '../types/ros'
 
-const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
 const HEALTH_POLL_INTERVAL_MS = 2000
 
-function createMockSnapshot(initialUrl: string): RosConnectionSnapshot {
+function createMockSnapshot(): RosConnectionSnapshot {
   return {
     status: 'mock',
-    url: initialUrl,
     isConnected: true,
     lastError: null,
     connectedAt: Date.now(),
@@ -23,10 +21,9 @@ function createMockSnapshot(initialUrl: string): RosConnectionSnapshot {
   }
 }
 
-function createInitialSnapshot(initialUrl: string): RosConnectionSnapshot {
+function createInitialSnapshot(): RosConnectionSnapshot {
   return {
     status: 'idle',
-    url: initialUrl,
     isConnected: false,
     lastError: null,
     connectedAt: null,
@@ -42,10 +39,9 @@ class GatewayConnectionMonitor {
   private listeners = new Set<SnapshotListener>()
   private pollHandle: ReturnType<typeof setTimeout> | null = null
   private refreshPromise: Promise<void> | null = null
-  private readonly initialUrl = getDefaultRosbridgeUrl()
   private snapshot = USE_MOCK_DATA
-    ? createMockSnapshot(this.initialUrl)
-    : createInitialSnapshot(this.initialUrl)
+    ? createMockSnapshot()
+    : createInitialSnapshot()
 
   private emit() {
     this.listeners.forEach((listener) => listener(this.snapshot))
@@ -108,7 +104,6 @@ class GatewayConnectionMonitor {
       .then((health) => {
         this.patchSnapshot({
           status: health.ros.status,
-          url: health.ros.url || this.initialUrl,
           isConnected: health.ros.isConnected,
           lastError: health.ros.lastError,
           connectedAt: health.ros.connectedAt,
@@ -136,7 +131,7 @@ class GatewayConnectionMonitor {
     return this.refreshPromise
   }
 
-  async reconnect(url: string) {
+  async reconnect() {
     if (USE_MOCK_DATA) {
       return
     }
@@ -148,7 +143,7 @@ class GatewayConnectionMonitor {
       gatewayLastError: null,
     })
 
-    const response = await requestGatewayRosReconnect(url)
+    const response = await requestGatewayRosReconnect()
     this.patchSnapshot({
       ...response.ros,
       gatewayStatus: 'online',
@@ -171,8 +166,6 @@ export function useRosConnection() {
 
   return {
     snapshot,
-    defaultUrl: snapshot.url || getDefaultRosbridgeUrl(),
-    connect: (url: string) => gatewayConnectionMonitor.reconnect(url),
-    reconnect: () => gatewayConnectionMonitor.reconnect(snapshot.url || getDefaultRosbridgeUrl()),
+    reconnect: () => gatewayConnectionMonitor.reconnect(),
   }
 }

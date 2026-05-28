@@ -30,9 +30,6 @@ const CLEAN_MODE_ALIASES: Record<string, StandardCleanMode> = {
   wet_scrub: 'scrub',
   deep: 'scrub',
   deep_clean: 'scrub',
-
-  // Legacy frontend value kept readable during the transition.
-  coverage: 'scrub',
 } as const
 
 function normalizeCleanModeKey(value: string | null | undefined) {

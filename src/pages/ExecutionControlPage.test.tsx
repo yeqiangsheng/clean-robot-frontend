@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { executeTaskCommand, manageTask } from '../api/gateway/robotGateway'
+import { executeTaskCommand } from '../api/gateway/executionGateway'
+import { manageTask } from '../api/gateway/taskGateway'
 import { useRosConnection } from '../hooks/useRosConnection'
 import { useSlamWorkflowState } from '../hooks/useSlamWorkflowState'
 import { useTaskStartGate } from '../hooks/useTaskStartGate'
@@ -12,8 +13,11 @@ import type { SystemReadiness } from '../types/systemReadiness'
 import type { TaskEntity } from '../types/task'
 import { ExecutionControlPage } from './ExecutionControlPage'
 
-vi.mock('../api/gateway/robotGateway', () => ({
+vi.mock('../api/gateway/executionGateway', () => ({
   executeTaskCommand: vi.fn(),
+}))
+
+vi.mock('../api/gateway/taskGateway', () => ({
   manageTask: vi.fn(),
 }))
 
@@ -29,15 +33,8 @@ vi.mock('../hooks/useTaskStartGate', () => ({
   useTaskStartGate: vi.fn(),
 }))
 
-vi.mock('../components/readiness/SystemReadinessCard', () => ({
-  ResolvedSystemReadinessCard: () => (
-    <section aria-label="任务启动前 readiness">readiness card</section>
-  ),
-}))
-
 const connectedSnapshot: RosConnectionSnapshot = {
   status: 'connected',
-  url: 'ws://127.0.0.1:9090',
   isConnected: true,
   lastError: null,
   connectedAt: Date.now(),
@@ -125,10 +122,7 @@ describe('ExecutionControlPage', () => {
     })
     vi.mocked(useRosConnection).mockReturnValue({
       snapshot: connectedSnapshot,
-      defaultUrl: 'ws://127.0.0.1:9090',
-      connect: vi.fn(),
-      disconnect: vi.fn(),
-      isConnected: true,
+      reconnect: vi.fn(),
     } as unknown as ReturnType<typeof useRosConnection>)
     vi.mocked(useSlamWorkflowState).mockReturnValue({
       effectiveState: {
@@ -191,10 +185,10 @@ describe('ExecutionControlPage', () => {
   it('keeps START on the canonical task_id and refreshes readiness before dispatch', async () => {
     renderExecutionControlPage()
 
-    expect(await screen.findByText('task_live_probe')).toBeInTheDocument()
-    expect(screen.getByText('正式 task_id')).toBeInTheDocument()
-    expect(screen.getAllByText('7').length).toBeGreaterThan(0)
-    expect(screen.getByText('START 前检查通过')).toBeInTheDocument()
+    expect(await screen.findByText(/task_live_probe/)).toBeInTheDocument()
+    expect(screen.queryByText('readiness card')).not.toBeInTheDocument()
+    expect(screen.queryByText('\u6b63\u5f0f task_id')).not.toBeInTheDocument()
+    expect(screen.getByText(/START \u524d\u68c0\u67e5\u901a\u8fc7/)).toBeInTheDocument()
     expect(screen.queryByText(['/exe', '_task_server'].join(''))).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /START/ }))

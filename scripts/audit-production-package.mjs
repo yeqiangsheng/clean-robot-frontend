@@ -35,6 +35,14 @@ const distFileNamePatterns = [
     pattern: /(^|[._-])(test|spec)([._-]|$)/i,
   },
   {
+    label: 'split rc vendor chunk',
+    pattern: /assets\/vendor-rc[-.]/i,
+  },
+  {
+    label: 'split antd icons vendor chunk',
+    pattern: /assets\/vendor-antd-icons[-.]/i,
+  },
+  {
     label: 'vitest artifact filename',
     pattern: /vitest/i,
   },
@@ -63,14 +71,49 @@ const distContentPatterns = [
   },
 ]
 
+const distIndexHtmlPatterns = [
+  {
+    label: 'roslib vendor preloaded by app shell',
+    pattern: /rel="modulepreload"[^>]+vendor-ros/i,
+  },
+  {
+    label: 'canvas vendor preloaded by app shell',
+    pattern: /rel="modulepreload"[^>]+vendor-canvas/i,
+  },
+]
+
 const currentDocPatterns = [
   {
     label: 'live rosbridge IP baked into current docs/config',
-    pattern: /(192\.168\.16\.11|10\.2\.0\.88|10\.0\.0\.157|10\.0\.0\.174)/,
+    pattern: /(192\.168\.16\.11|10\.2\.0\.88|10\.0\.0\.157|10\.0\.0\.174|10\.54\.217\.59)/,
   },
   {
     label: 'browser-side rosbridge Vite env in current docs/config',
     pattern: /VITE_ROSBRIDGE_URL/,
+  },
+  {
+    label: 'browser rosbridge proxy route in current docs/config',
+    pattern: /\/ws\/rosbridge/,
+  },
+  {
+    label: 'browser websocket proxy route in current docs/config',
+    pattern: /\/ws\/\*/,
+  },
+  {
+    label: 'browser websocket proxy env in current docs/config',
+    pattern: /VITE_SITE_GATEWAY_WS_TARGET/,
+  },
+  {
+    label: 'browser rosbridge reconnect route in current docs/config',
+    pattern: /\/gateway\/rosbridge\/reconnect/,
+  },
+  {
+    label: 'browser-side ROS subscription wording in current docs/config',
+    pattern: /browser-side ROS subscriptions/i,
+  },
+  {
+    label: 'rosbridge proxying wording in current docs/config',
+    pattern: /rosbridge proxying/i,
   },
   {
     label: 'legacy fallback wording in current docs/config',
@@ -102,6 +145,45 @@ const forbiddenPublicAppConfigFields = [
   'engineerUnlockMode',
   'engineerPasscode',
 ]
+
+const approvedFactoryBootstrapUsers = [
+  {
+    username: 'operator',
+    role: 'operator',
+    password: 'bulibusan1314',
+  },
+  {
+    username: 'service',
+    role: 'service',
+    password: 'bulibusan1314',
+  },
+  {
+    username: 'engineer',
+    role: 'engineer',
+    password: 'bulibusan1314',
+  },
+]
+
+function validateApprovedFactoryBootstrapUsers(users) {
+  if (!Array.isArray(users)) {
+    return false
+  }
+
+  if (users.length !== approvedFactoryBootstrapUsers.length) {
+    return false
+  }
+
+  return approvedFactoryBootstrapUsers.every((expectedUser) =>
+    users.some(
+      (user) =>
+        user &&
+        typeof user === 'object' &&
+        user.username === expectedUser.username &&
+        user.role === expectedUser.role &&
+        user.password === expectedUser.password,
+    ),
+  )
+}
 
 function normalizePath(filePath) {
   return relative(repoRoot, filePath).replaceAll('\\', '/')
@@ -154,6 +236,7 @@ if (!existsSync(distDir)) {
 
 const distFiles = []
 collectFiles(distDir, distFiles)
+const distRelativePaths = distFiles.map(normalizePath)
 
 const findings = []
 
@@ -173,6 +256,24 @@ if (existsSync(publicAppConfigPath)) {
   }
 }
 
+const siteGatewayConfigPath = resolve(repoRoot, 'site-gateway/site-config.json')
+if (existsSync(siteGatewayConfigPath)) {
+  const siteGatewayConfig = JSON.parse(readFileSync(siteGatewayConfigPath, 'utf8'))
+
+  if (
+    siteGatewayConfig &&
+    typeof siteGatewayConfig === 'object' &&
+    !Array.isArray(siteGatewayConfig) &&
+    !validateApprovedFactoryBootstrapUsers(siteGatewayConfig.bootstrapUsers)
+  ) {
+    findings.push({
+      file: normalizePath(siteGatewayConfigPath),
+      token:
+        'default bootstrap users must match approved factory accounts: operator/service/engineer',
+    })
+  }
+}
+
 for (const filePath of distFiles) {
   const relativePath = normalizePath(filePath)
 
@@ -186,6 +287,22 @@ for (const filePath of distFiles) {
   }
 
   scanFileContent(filePath, distContentPatterns, findings)
+}
+
+const antdJsChunks = distRelativePaths.filter((filePath) =>
+  /assets\/vendor-antd-[^/]+\.js$/i.test(filePath),
+)
+
+if (antdJsChunks.length !== 1) {
+  findings.push({
+    file: 'dist/assets',
+    token: `expected exactly one bundled antd ecosystem JS chunk, found ${antdJsChunks.length}`,
+  })
+}
+
+const distIndexPath = resolve(distDir, 'index.html')
+if (existsSync(distIndexPath)) {
+  scanFileContent(distIndexPath, distIndexHtmlPatterns, findings)
 }
 
 for (const entry of currentDocEntries) {

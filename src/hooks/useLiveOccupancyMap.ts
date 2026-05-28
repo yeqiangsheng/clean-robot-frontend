@@ -1,6 +1,6 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from 'react'
 
-import { requestLiveMapSnapshot } from '../api/gateway/siteGatewayClient'
+import { requestLiveMapSnapshot } from '../api/gateway/siteGatewayMapClient'
 import type { MapEntity, OccupancyGrid } from '../types/map-editor'
 import type { RosConnectionSnapshot } from '../types/ros'
 

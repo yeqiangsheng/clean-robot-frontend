@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
-import { Button, Card, Form, Input, Space, Typography } from 'antd'
+import { Button, Card, Checkbox, Form, Input } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
 
 import { AppFeedbackBanner } from '../feedback/AppFeedbackBanner'
+import { SunnyBearLogo } from './SunnyBearLogo'
 
 interface LoginScreenProps {
   siteName: string
@@ -16,11 +17,44 @@ interface LoginScreenProps {
 interface LoginFormValues {
   username: string
   password: string
+  rememberUsername?: boolean
+}
+
+const REMEMBERED_USERNAME_KEY = 'cleanRobot.rememberedUsername'
+const LEGACY_REMEMBERED_LOGIN_KEY = 'cleanRobot.rememberedLogin'
+
+function readRememberedUsername(): Pick<LoginFormValues, 'username' | 'rememberUsername'> | null {
+  try {
+    window.localStorage.removeItem(LEGACY_REMEMBERED_LOGIN_KEY)
+    const username = window.localStorage.getItem(REMEMBERED_USERNAME_KEY)
+    if (!username) {
+      return null
+    }
+
+    const trimmed = username.trim()
+    if (!trimmed) {
+      return null
+    }
+
+    return {
+      username: trimmed,
+      rememberUsername: true,
+    }
+  } catch {
+    return null
+  }
+}
+
+function saveRememberedUsername(username: string) {
+  window.localStorage.setItem(REMEMBERED_USERNAME_KEY, username)
+}
+
+function clearRememberedUsername() {
+  window.localStorage.removeItem(REMEMBERED_USERNAME_KEY)
+  window.localStorage.removeItem(LEGACY_REMEMBERED_LOGIN_KEY)
 }
 
 export function LoginScreen({
-  siteName,
-  robotId,
   loading,
   error,
   onSubmit,
@@ -28,12 +62,24 @@ export function LoginScreen({
   const [form] = Form.useForm<LoginFormValues>()
   const [submitting, setSubmitting] = useState(false)
 
+  useEffect(() => {
+    const rememberedUsername = readRememberedUsername()
+    if (rememberedUsername) {
+      form.setFieldsValue(rememberedUsername)
+    }
+  }, [form])
+
   const handleFinish = async (values: LoginFormValues) => {
     setSubmitting(true)
 
     try {
       await onSubmit(values.username, values.password)
-      form.resetFields(['password'])
+      if (values.rememberUsername) {
+        saveRememberedUsername(values.username)
+      } else {
+        clearRememberedUsername()
+        form.resetFields(['password'])
+      }
     } finally {
       setSubmitting(false)
     }
@@ -42,19 +88,16 @@ export function LoginScreen({
   return (
     <div className="app-login-shell">
       <Card className="app-login-card">
-        <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-          <div>
-            <Typography.Title level={2}>{siteName}</Typography.Title>
-            <Typography.Paragraph>机器人编号：{robotId}</Typography.Paragraph>
-            <Typography.Paragraph type="secondary">
-              当前商用前端通过本地站点 Gateway 接入 ROS 能力。请使用现场账号登录后再进入业务页面。
-            </Typography.Paragraph>
+        <div className="app-login-content">
+          <div className="app-login-brand">
+            <SunnyBearLogo compact />
           </div>
 
           {error ? <AppFeedbackBanner tone="error" title="登录失败" description={error} /> : null}
 
           <Form<LoginFormValues>
             form={form}
+            className="app-login-form"
             layout="vertical"
             onFinish={(values) => void handleFinish(values)}
           >
@@ -65,8 +108,9 @@ export function LoginScreen({
             >
               <Input
                 autoFocus
+                size="large"
                 prefix={<UserOutlined />}
-                placeholder="operator / service / engineer / admin"
+                placeholder="请输入账号"
                 autoComplete="username"
               />
             </Form.Item>
@@ -77,23 +121,29 @@ export function LoginScreen({
               rules={[{ required: true, message: '请输入密码。' }]}
             >
               <Input.Password
+                size="large"
                 prefix={<LockOutlined />}
-                placeholder="请输入站点 Gateway 账号密码"
+                placeholder="请输入密码"
                 autoComplete="current-password"
               />
             </Form.Item>
 
-            <Button type="primary" htmlType="submit" block loading={loading || submitting}>
+            <Form.Item name="rememberUsername" valuePropName="checked" className="app-login-remember">
+              <Checkbox>记住账号</Checkbox>
+            </Form.Item>
+
+            <Button
+              className="app-login-submit"
+              type="primary"
+              htmlType="submit"
+              size="large"
+              block
+              loading={loading || submitting}
+            >
               登录
             </Button>
           </Form>
-
-          <AppFeedbackBanner
-            tone="info"
-            title="首次部署提示"
-            description="默认引导账号会在首次启动时写入本地站点 Gateway 数据库。交付时建议立即修改默认密码。"
-          />
-        </Space>
+        </div>
       </Card>
     </div>
   )

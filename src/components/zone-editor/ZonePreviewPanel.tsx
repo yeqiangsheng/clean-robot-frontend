@@ -5,7 +5,6 @@ import {
   Input,
   Select,
   Space,
-  Tag,
   Typography,
 } from 'antd'
 
@@ -52,45 +51,12 @@ type ZonePreviewPanelProps = {
   onCancel: () => void
 }
 
-function formatPreviewSummary(preview: ZoneDraftPreview, draftRect: ZoneRectDraft | null) {
-  const parts: string[] = []
-
-  if (preview.estimatedLengthM !== null) {
-    parts.push(`预计长度 ${formatNumber(preview.estimatedLengthM, 1)} m`)
-  }
-
-  if (preview.estimatedDurationS !== null) {
-    parts.push(`预计时长 ${formatNumber(preview.estimatedDurationS, 0)} s`)
-  }
-
-  if (draftRect?.areaM2 !== null && draftRect?.areaM2 !== undefined) {
-    parts.push(`影响范围 ${formatNumber(draftRect.areaM2, 1)} m^2`)
-  }
-
-  return parts.join(' | ') || '后端已返回新的覆盖路径预览。'
-}
-
-function formatCommitSummary(summary: NonNullable<ZonePreviewPanelProps['lastCommitSummary']>) {
-  const parts = [
-    `zone_id: ${summary.zoneId}`,
-    `version: ${summary.zoneVersion ?? '--'}`,
-    `plan_id: ${summary.planId ?? '--'}`,
-  ]
-
-  if (summary.warnings.length > 0) {
-    parts.push(`提示: ${summary.warnings[0]}`)
-  }
-
-  return parts.join(' | ')
-}
-
 function renderSelectLoading(message: string) {
   return <AppLoadingState compact message={message} />
 }
 
 export function ZonePreviewPanel({
   mode,
-  hasAlignment,
   rectPoints,
   draftRect,
   draftPreview,
@@ -99,14 +65,11 @@ export function ZonePreviewPanel({
   displayName,
   profileName,
   profileOptions,
-  profileCatalogError,
   isLoadingProfiles,
   isPreviewingRect,
   isPreviewingPlan,
   isCommitting,
   lastError,
-  hasUnsavedChanges,
-  lastCommitSummary,
   onDisplayNameChange,
   onProfileNameChange,
   onPreviewPlan,
@@ -125,65 +88,9 @@ export function ZonePreviewPanel({
   )
 
   const commitLabel = isEditingZone ? '保存修改' : '提交覆盖区'
-  const idleDescription = isEditingZone
-    ? '正在加载所选覆盖区草稿。'
-    : '点击“新建覆盖区”后，在画布上选择两个角点，就能生成矩形草稿。'
 
   return (
-    <Card
-      title="覆盖区草稿"
-      className="workbench-card"
-      extra={
-        <Space size="small" wrap>
-          {isEditingZone ? <Tag color="processing">编辑中</Tag> : null}
-          {isCreatingZone ? <Tag color="processing">新建中</Tag> : null}
-          {!isActive ? <Tag>待命</Tag> : null}
-          {isActive && hasUnsavedChanges ? <Tag color="warning">未保存</Tag> : null}
-          {lastCommitSummary ? <Tag color="success">最近已保存</Tag> : null}
-        </Space>
-      }
-    >
-      {lastCommitSummary ? (
-        <AppFeedbackBanner
-          tone="success"
-          title={lastCommitSummary.mode === 'edit' ? '覆盖区已保存' : '覆盖区已创建'}
-          description={formatCommitSummary(lastCommitSummary)}
-          className="zone-editor-alert"
-        />
-      ) : null}
-
-      {isActive && hasUnsavedChanges ? (
-        <AppFeedbackBanner
-          tone="warning"
-          title={isEditingZone ? '当前修改尚未保存' : '当前草稿尚未提交'}
-          description={
-            isEditingZone
-              ? '你正在调整覆盖区几何或参数。退出编辑会丢失本次修改。'
-              : '你正在创建新的覆盖区。退出编辑会放弃当前草稿和预览结果。'
-          }
-          className="zone-editor-alert"
-        />
-      ) : null}
-
-      {!hasAlignment ? (
-        <AppFeedbackBanner
-          tone="info"
-          title="当前直接使用地图坐标"
-          description="草稿、预览和提交会继续基于地图坐标工作，不会阻塞当前工作台操作。"
-          className="zone-editor-alert"
-        />
-      ) : null}
-
-      {draftPreview ? (
-        <AppFeedbackBanner
-          tone={draftPreview.valid === false ? 'warning' : 'success'}
-          title={draftPreview.valid === false ? '路径预览需要调整' : '路径预览已更新'}
-          description={formatPreviewSummary(draftPreview, draftRect)}
-          className="zone-editor-alert"
-        />
-      ) : null}
-
-      {!isActive && !draftRect ? <AppEmptyState description={idleDescription} /> : null}
+    <Card title="覆盖区草稿" className="workbench-card">
 
       {isCreatingZone && isPreviewingRect ? (
         <AppLoadingState
@@ -217,15 +124,6 @@ export function ZonePreviewPanel({
         />
       ) : null}
 
-      {profileCatalogError ? (
-        <AppFeedbackBanner
-          tone="warning"
-          title="规划档位目录加载失败"
-          description={`当前无法加载可选规划档位，相关能力已降级。${profileCatalogError}`}
-          className="zone-editor-alert"
-        />
-      ) : null}
-
       {draftRect ? (
         <>
           <Descriptions column={1} size="small" colon={false}>
@@ -246,23 +144,6 @@ export function ZonePreviewPanel({
               {draftRect.displayFrame?.frameId ?? '--'}
             </Descriptions.Item>
           </Descriptions>
-
-          {draftRect.warnings.length > 0 ? (
-            <div className="constraint-warning-block">
-              <Typography.Text strong>草稿注意事项</Typography.Text>
-              <ul className="constraint-warning-list">
-                {draftRect.warnings.map((warning, index) => (
-                  <li key={`${warning}-${index}`}>{warning}</li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <Typography.Paragraph className="workbench-footnote zone-preview-footnote">
-              {isEditingZone
-                ? '可以继续拖拽画布角点微调几何，再执行“预览路径”，确认后保存修改。'
-                : '当前草稿已经可用，建议先做路径预览，再决定是否提交覆盖区。'}
-            </Typography.Paragraph>
-          )}
 
           <div className="zone-preview-form">
             <div className="zone-preview-form-row">
@@ -290,12 +171,6 @@ export function ZonePreviewPanel({
                 onChange={(value) => onProfileNameChange(value)}
               />
             </div>
-
-            {!profileCatalogError && profileOptions.length === 0 && !isLoadingProfiles ? (
-              <Typography.Paragraph className="workbench-footnote zone-preview-footnote">
-                后端暂未返回可选规划档位，当前页面会保持可打开，但不会允许完整提交。
-              </Typography.Paragraph>
-            ) : null}
           </div>
 
           <Space wrap className="zone-preview-actions">
@@ -321,9 +196,7 @@ export function ZonePreviewPanel({
         <>
           <Descriptions column={1} size="small" colon={false}>
             <Descriptions.Item label="预览是否有效">
-              <Tag color={draftPreview.valid ? 'success' : 'warning'}>
-                {draftPreview.valid ? '是' : '否'}
-              </Tag>
+              {draftPreview.valid ? '是' : '否'}
             </Descriptions.Item>
             <Descriptions.Item label="预计路径长度">
               {draftPreview.estimatedLengthM !== null
@@ -345,20 +218,6 @@ export function ZonePreviewPanel({
             </Descriptions.Item>
           </Descriptions>
 
-          {draftPreview.warnings.length > 0 ? (
-            <div className="constraint-warning-block">
-              <Typography.Text strong>预览注意事项</Typography.Text>
-              <ul className="constraint-warning-list">
-                {draftPreview.warnings.map((warning, index) => (
-                  <li key={`${warning}-${index}`}>{warning}</li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <Typography.Paragraph className="workbench-footnote zone-preview-footnote">
-              当前画布里的预览路径和入口位姿，已经来自后端返回的正式预览结果。
-            </Typography.Paragraph>
-          )}
         </>
       ) : null}
     </Card>

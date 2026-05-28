@@ -37,6 +37,6 @@ This release candidate is the first commercial site-gateway delivery candidate f
 
 ## Known Watch Items
 
-- Keep any remaining browser ROS fallbacks confined to low-level compatibility boundaries.
+- Browser ROS business fallbacks should not be reintroduced; keep business IO on the Site Gateway path.
 - Continue spot-checking MapWorkbench edit/delete flows for no-go areas, coverage zones, and virtual walls before final stable release.
 - Promote this RC to a stable version only after the next on-site regression pass confirms there are no new blocking field issues.

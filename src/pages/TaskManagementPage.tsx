@@ -1,14 +1,12 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 
 import { Button, Card, Form, Input, Select, Space, Tag, Typography } from 'antd'
-import { PlusOutlined, ReloadOutlined, UnorderedListOutlined } from '@ant-design/icons'
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 
-import { manageTask } from '../api/gateway/robotGateway'
+import { manageTask } from '../api/gateway/taskGateway'
 import { AppEmptyState } from '../components/feedback/AppEmptyState'
 import { AppFeedbackBanner } from '../components/feedback/AppFeedbackBanner'
 import { AppLoadingState } from '../components/feedback/AppLoadingState'
-import { LiveCommandContextCard } from '../components/runtime/LiveCommandContextCard'
-import { RosbridgeEndpointControl } from '../components/ros/RosbridgeEndpointControl'
 import { TaskManagementDetail } from '../features/task-management/TaskManagementDetail'
 import { TaskManagementEditor } from '../features/task-management/TaskManagementEditor'
 import {
@@ -17,7 +15,6 @@ import {
   getMapReferenceLabel,
   getRepeatAfterFullChargeTag,
   getReturnToDockTag,
-  getTaskMetadataEntries,
   getTaskStatusTagColor,
   getZoneAvailabilityLabel,
   getZoneReferenceLabel,
@@ -29,31 +26,13 @@ import { useProfileCatalog } from '../hooks/useProfileCatalog'
 import { useRosConnection } from '../hooks/useRosConnection'
 import { useExecutionSessionStore } from '../stores/executionSessionStore'
 import type { TaskDraftInput } from '../types/task'
-import { formatNumber } from '../utils/geometry'
 import { formatProfileDisplayName } from '../utils/profileCatalog'
 import './TaskManagementPage.css'
 
 type EditorMode = 'idle' | 'create' | 'edit'
 
-function getConnectionTag(status: string) {
-  switch (status) {
-    case 'connected':
-      return { color: 'success', label: '已连接' }
-    case 'connecting':
-      return { color: 'processing', label: '连接中' }
-    case 'error':
-      return { color: 'error', label: '连接异常' }
-    case 'mock':
-      return { color: 'purple', label: 'Mock 数据' }
-    case 'closed':
-      return { color: 'warning', label: '连接关闭' }
-    default:
-      return { color: 'default', label: '未连接' }
-  }
-}
-
 export function TaskManagementPage() {
-  const { snapshot, defaultUrl, connect } = useRosConnection()
+  const { snapshot } = useRosConnection()
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null)
   const [editorMode, setEditorMode] = useState<EditorMode>('idle')
   const [taskSearchText, setTaskSearchText] = useState('')
@@ -67,7 +46,6 @@ export function TaskManagementPage() {
   const setFocusedTaskId = useExecutionSessionStore((state) => state.setFocusedTaskId)
   const setFocusedTaskName = useExecutionSessionStore((state) => state.setFocusedTaskName)
 
-  const connectionTag = getConnectionTag(snapshot.status)
   const {
     tasksQuery,
     detailQuery,
@@ -113,10 +91,6 @@ export function TaskManagementPage() {
     ],
   })
 
-  const selectedZoneInForm = selectedZoneIdInForm
-    ? editorZoneCatalog.entryById.get(selectedZoneIdInForm) ?? null
-    : null
-
   const mapOptions = useMemo(() => {
     const visibleEntries = [...mapCatalog.selectableEntries]
     const selectedDisabledEntry =
@@ -143,35 +117,6 @@ export function TaskManagementPage() {
     }))
   }, [detailMapName, editorMapName, mapCatalog.entryByName, mapCatalog.selectableEntries])
 
-  const selectedZoneSummary = useMemo(() => {
-    if (!selectedZoneInForm) {
-      return null
-    }
-
-    const parts = [getZoneReferenceLabel(selectedZoneInForm)]
-
-    if (selectedZoneInForm.planProfileName) {
-      parts.push(`规划档位=${selectedZoneInForm.planProfileName}`)
-    }
-
-    if (selectedZoneInForm.estimatedLengthM !== null) {
-      parts.push(`长度=${formatNumber(selectedZoneInForm.estimatedLengthM, 1)}m`)
-    }
-
-    if (selectedZoneInForm.estimatedDurationS !== null) {
-      parts.push(`时长=${formatNumber(selectedZoneInForm.estimatedDurationS, 0)}s`)
-    }
-
-    const availability = getZoneAvailabilityLabel(selectedZoneInForm.availability)
-
-    if (availability) {
-      parts.push(availability)
-    }
-
-    return parts.join(' / ')
-  }, [selectedZoneInForm])
-
-  const metadataEntries = getTaskMetadataEntries(selectedTaskDetail)
   const visibleTasks = useMemo(() => {
     const normalizedQuery = taskSearchText.trim().toLowerCase()
     const filteredTasks = (tasksQuery.data ?? []).filter((task) => {
@@ -282,11 +227,6 @@ export function TaskManagementPage() {
     returnToDockOnFinishInForm,
   ])
 
-  const handleReconnect = async (url?: string) => {
-    await connect((url ?? snapshot.url) || defaultUrl)
-    await refetchTaskData()
-  }
-
   const handleStartCreate = () => {
     setActionError(null)
     form.setFieldsValue(buildCreateTaskDefaults(selectedTaskDetail))
@@ -386,19 +326,7 @@ export function TaskManagementPage() {
       <header className="task-page-header">
         <div>
           <Typography.Title level={2}>任务管理</Typography.Title>
-          <Typography.Paragraph>
-            任务 CRUD 统一通过 `/database_server/app/clean_task_service`。
-          </Typography.Paragraph>
         </div>
-        <Space size="middle" wrap>
-          <Tag color="gold">任务站点页</Tag>
-          <Tag color={connectionTag.color}>{connectionTag.label}</Tag>
-          <RosbridgeEndpointControl
-            snapshot={snapshot}
-            defaultUrl={defaultUrl}
-            onConnect={handleReconnect}
-          />
-        </Space>
       </header>
 
       {snapshot.status === 'error' && snapshot.lastError ? (
@@ -406,15 +334,6 @@ export function TaskManagementPage() {
           tone="error"
           title="ROS 连接异常"
           description={snapshot.lastError}
-          className="task-banner"
-        />
-      ) : null}
-
-      {snapshot.status === 'mock' ? (
-        <AppFeedbackBanner
-          tone="info"
-          title="当前正在使用 Mock 数据"
-          description="如果需要接入真实后端，请在 `.env.development` 中设置 `VITE_USE_MOCK_DATA=false`。"
           className="task-banner"
         />
       ) : null}
@@ -561,7 +480,6 @@ export function TaskManagementPage() {
             isRefreshing={detailQuery.isFetching && Boolean(selectedTask)}
             error={detailQuery.error instanceof Error ? detailQuery.error.message : null}
             isSubmitting={isSubmitting}
-            metadataEntries={metadataEntries}
             zoneLabel={zoneLabel}
             planProfileLabel={renderProfileValue(selectedTaskDetail?.planProfileName ?? '', 'plan')}
             sysProfileLabel={renderProfileValue(selectedTaskDetail?.sysProfileName ?? '', 'sys')}
@@ -584,7 +502,6 @@ export function TaskManagementPage() {
             planProfileLoading={planProfileCatalog.isLoading || planProfileCatalog.isFetching}
             sysProfileLoading={sysProfileCatalog.isLoading || sysProfileCatalog.isFetching}
             editorMapName={editorMapName}
-            selectedZoneSummary={selectedZoneSummary}
             repeatAfterFullChargeEnabled={repeatAfterFullChargeEnabledInForm}
             onSubmit={handleSubmit}
             onCancel={handleCancelEdit}
@@ -594,26 +511,6 @@ export function TaskManagementPage() {
               }
             }}
           />
-
-          <Card
-            title="本页范围"
-            className="task-card"
-            extra={<UnorderedListOutlined />}
-          >
-            <ul className="task-scope-list">
-              {[
-                '任务列表查询',
-                '任务详情查看',
-                '任务创建',
-                '任务修改',
-                '任务删除',
-              ].map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </Card>
-
-          <LiveCommandContextCard selectedTask={selectedTaskDetail} />
         </aside>
       </div>
     </div>

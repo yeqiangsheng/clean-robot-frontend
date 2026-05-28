@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 
-import { fetchGatewaySlamStateTopicSnapshot } from '../api/gateway/siteGatewayClient'
-import { getSlamState } from '../api/gateway/robotGateway'
+import { fetchGatewaySlamStateTopicSnapshot } from '../api/gateway/siteGatewayStatusClient'
+import { getSlamState } from '../api/gateway/robotStatusGateway'
 import {
   SLAM_WORKFLOW_STATE_TOPIC_TYPE,
   SLAM_WORKFLOW_TOPIC_STALE_AFTER_MS,
-} from '../api/ros/slamWorkflowTopics'
+} from '../api/contracts/slamWorkflowTopicConfig'
 import type { RosConnectionSnapshot } from '../types/ros'
 import type {
   SlamTopicHealth,
@@ -16,7 +16,7 @@ import type {
 } from '../types/slam-workflow'
 import { SLAM_STATE_QUERY_INTERVAL_MS } from '../utils/slam'
 
-const SLAM_STATE_TOPIC_POLL_INTERVAL_MS = 1000
+const SLAM_STATE_TOPIC_POLL_INTERVAL_MS = 500
 
 function getTopicHealth(
   isConnected: boolean,
@@ -59,6 +59,12 @@ function createMockSlamWorkflowState(): SlamWorkflowState {
     mapAgeS: 0,
     trackedPoseFresh: true,
     trackedPoseAgeS: 0,
+    trackedPoseFrame: 'map',
+    trackedPoseX: 1.2,
+    trackedPoseY: 0.8,
+    trackedPoseTheta: 0,
+    trackedPoseStampMs: Date.now(),
+    trackedPoseSource: 'mock:/tracked_pose',
     missionState: 'IDLE',
     phase: 'IDLE',
     publicState: 'IDLE',
@@ -76,34 +82,46 @@ function createMockSlamWorkflowState(): SlamWorkflowState {
     stampMs: Date.now(),
     raw: {
       source: 'mock',
+      tracked_pose_frame: 'map',
+      tracked_pose_x: 1.2,
+      tracked_pose_y: 0.8,
+      tracked_pose_theta: 0,
     },
   }
 }
 
-export function useSlamWorkflowState(snapshot: RosConnectionSnapshot) {
+interface UseSlamWorkflowStateOptions {
+  enabled?: boolean
+}
+
+export function useSlamWorkflowState(
+  snapshot: RosConnectionSnapshot,
+  options: UseSlamWorkflowStateOptions = {},
+) {
+  const enabled = options.enabled ?? true
   const servicesReady = snapshot.isConnected
   const useMockState = snapshot.status === 'mock'
   const [clock, setClock] = useState(() => Date.now())
   const mockState = useMemo(() => createMockSlamWorkflowState(), [])
 
   const serviceQuery = useQuery({
-    queryKey: ['slam-state', snapshot.url, snapshot.sessionId],
+    queryKey: ['slam-state', snapshot.sessionId],
     queryFn: () => getSlamState(),
-    enabled: servicesReady && !useMockState,
+    enabled: enabled && servicesReady && !useMockState,
     retry: false,
     staleTime: 0,
     refetchOnWindowFocus: false,
-    refetchInterval: servicesReady ? SLAM_STATE_QUERY_INTERVAL_MS : false,
+    refetchInterval: enabled && servicesReady ? SLAM_STATE_QUERY_INTERVAL_MS : false,
   })
 
   const topicQuery = useQuery({
     queryKey: ['slam-state-topic', snapshot.sessionId],
     queryFn: () => fetchGatewaySlamStateTopicSnapshot(),
-    enabled: servicesReady && !useMockState,
+    enabled: enabled && servicesReady && !useMockState,
     retry: false,
     staleTime: 0,
     refetchOnWindowFocus: false,
-    refetchInterval: servicesReady ? SLAM_STATE_TOPIC_POLL_INTERVAL_MS : false,
+    refetchInterval: enabled && servicesReady ? SLAM_STATE_TOPIC_POLL_INTERVAL_MS : false,
   })
 
   useEffect(() => {
@@ -132,6 +150,21 @@ export function useSlamWorkflowState(snapshot: RosConnectionSnapshot) {
       } satisfies SlamWorkflowTopicSnapshot
     }
 
+    if (!enabled) {
+      return {
+        messageType: SLAM_WORKFLOW_STATE_TOPIC_TYPE,
+        publishers: [],
+        subscribers: [],
+        metaError: null,
+        subscribeError: null,
+        health: 'unavailable',
+        messageCount: 0,
+        lastMessageAt: null,
+        ageMs: null,
+        state: null,
+      } satisfies SlamWorkflowTopicSnapshot
+    }
+
     const topicData = topicQuery.data
     const lastMessageAt = topicData?.lastMessageAt ?? null
     const ageMs = lastMessageAt === null ? null : Math.max(0, clock - lastMessageAt)
@@ -150,7 +183,7 @@ export function useSlamWorkflowState(snapshot: RosConnectionSnapshot) {
       ageMs,
       state: topicData?.payload ?? null,
     } satisfies SlamWorkflowTopicSnapshot
-  }, [clock, mockState, servicesReady, topicQuery.data, useMockState])
+  }, [clock, enabled, mockState, servicesReady, topicQuery.data, useMockState])
 
   const effectiveState = useMemo(() => {
     if (topicSnapshot.state) {

@@ -29,6 +29,7 @@ describe('normalizeSiteConfig', () => {
         tasks: true,
         schedules: true,
         execution: true,
+        'dock-calibration': true,
         slam: true,
         runtime: true,
         'actuator-control': false,
@@ -51,6 +52,7 @@ describe('normalizeSiteConfig', () => {
 
     expect(config.rosbridgeUrl).toBe('ws://127.0.0.1:9090/')
     expect(config.sessionTtlHours).toBe(12)
+    expect(config.clearSessionsOnStartup).toBe(true)
     expect(config.logRetentionDays).toBe(14)
     expect(config.mapImportPbstreamDir).toBe('/opt/carto/map')
     expect(config.enabledModules['actuator-control']).toBe(false)
@@ -60,36 +62,73 @@ describe('normalizeSiteConfig', () => {
     })
   })
 
+  it('allows startup session clearing to be disabled explicitly', () => {
+    const config = normalizeSiteConfig({
+      siteName: 'Clean Robot Site',
+      robotId: 'robot-001',
+      rosbridgeUrl: 'ws://127.0.0.1:9090',
+      enabledModules: {
+        overview: true,
+        workbench: true,
+        tasks: true,
+        schedules: true,
+        execution: true,
+        'dock-calibration': true,
+        slam: true,
+        runtime: true,
+        'actuator-control': true,
+      },
+      rolePolicy: {
+        operator: ['overview'],
+        service: ['overview'],
+        engineer: ['overview'],
+        admin: ['overview'],
+      },
+      clearSessionsOnStartup: false,
+    })
+
+    expect(config.clearSessionsOnStartup).toBe(false)
+  })
+
   it('rejects placeholder bootstrap passwords', () => {
+    const buildConfig = (password) => ({
+      siteName: 'Clean Robot Site',
+      robotId: 'robot-001',
+      rosbridgeUrl: 'ws://127.0.0.1:9090',
+      enabledModules: {
+        overview: true,
+        workbench: true,
+        tasks: true,
+        schedules: true,
+        execution: true,
+        'dock-calibration': true,
+        slam: true,
+        runtime: true,
+        'actuator-control': true,
+      },
+      rolePolicy: {
+        operator: ['overview'],
+        service: ['overview'],
+        engineer: ['overview'],
+        admin: ['overview'],
+      },
+      bootstrapUsers: [
+        {
+          username: 'engineer',
+          displayName: 'Field Engineer',
+          role: 'engineer',
+          password,
+        },
+      ],
+    })
+
+    expect(() => normalizeSiteConfig(buildConfig('change-me-engineer'))).toThrow(
+      'bootstrapUsers[0].password must be replaced with a site-specific secret.',
+    )
+
     expect(() =>
       normalizeSiteConfig({
-        siteName: 'Clean Robot Site',
-        robotId: 'robot-001',
-        rosbridgeUrl: 'ws://127.0.0.1:9090',
-        enabledModules: {
-          overview: true,
-          workbench: true,
-          tasks: true,
-          schedules: true,
-          execution: true,
-          slam: true,
-          runtime: true,
-          'actuator-control': true,
-        },
-        rolePolicy: {
-          operator: ['overview'],
-          service: ['overview'],
-          engineer: ['overview'],
-          admin: ['overview'],
-        },
-        bootstrapUsers: [
-          {
-            username: 'engineer',
-            displayName: 'Field Engineer',
-            role: 'engineer',
-            password: 'change-me-engineer',
-          },
-        ],
+        ...buildConfig('REPLACE_WITH_SITE_SPECIFIC_ENGINEER_SECRET'),
       }),
     ).toThrow('bootstrapUsers[0].password must be replaced with a site-specific secret.')
   })
@@ -106,6 +145,7 @@ describe('normalizeSiteConfig', () => {
           tasks: true,
           schedules: true,
           execution: true,
+          'dock-calibration': true,
           slam: true,
           runtime: true,
           'actuator-control': true,
@@ -138,6 +178,7 @@ describe('normalizeSiteConfig', () => {
           tasks: true,
           schedules: true,
           execution: true,
+          'dock-calibration': true,
           slam: true,
           runtime: true,
           'actuator-control': true,

@@ -1,4 +1,4 @@
-import { Button, Card, Form, Input, Space, Typography } from 'antd'
+import { Button, Card, Form } from 'antd'
 
 import { AppFeedbackBanner } from '../feedback/AppFeedbackBanner'
 
@@ -25,11 +25,6 @@ export function RelocalizeForm({
 
   return (
     <Card title="重新定位" className="slam-card">
-      <Typography.Paragraph className="slam-card-copy">
-        通过 `/clean_robot_server/app/submit_slam_command` 提交 `relocalize`
-        动作。只有在 `can_relocalize` 或 `can_restart_localization` 允许时，页面才会放行。
-      </Typography.Paragraph>
-
       {lastErrorCode || lastErrorMessage ? (
         <AppFeedbackBanner
           tone="warning"
@@ -50,18 +45,18 @@ export function RelocalizeForm({
         }}
         onFinish={onSubmit}
       >
-        <Form.Item name="description" label="说明">
-          <Input disabled={disabled} placeholder="可选，用于记录本次重新定位原因" />
-        </Form.Item>
-
-        <Space wrap>
-          <Button type="primary" htmlType="submit" loading={loading} disabled={disabled}>
-            提交重新定位
+        <div className="slam-form-actions">
+          <Button
+            block
+            size="large"
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            disabled={disabled}
+          >
+            重新定位
           </Button>
-          <Button disabled={disabled || loading} onClick={() => form.resetFields()}>
-            重置
-          </Button>
-        </Space>
+        </div>
       </Form>
     </Card>
   )

@@ -80,12 +80,6 @@
   min-width: 0;
 }
 
-.actuator-preset-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-}
-
 .actuator-inline-row {
   display: flex;
   align-items: center;
@@ -97,14 +91,6 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-}
-
-.actuator-action-grid-slim {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.actuator-action-grid-triple {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .actuator-action-button {
@@ -248,11 +234,6 @@
   border: 1px solid rgba(119, 133, 138, 0.14);
 }
 
-.actuator-log-tx {
-  font-family:
-    "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-}
-
 .actuator-no-margin {
   margin-bottom: 0;
 }
@@ -285,13 +266,8 @@
   }
 
   .actuator-charge-layout,
-  .actuator-charge-status-grid,
-  .actuator-action-grid-triple {
+  .actuator-charge-status-grid {
     grid-template-columns: 1fr;
-  }
-
-  .actuator-preset-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .actuator-inline-row,

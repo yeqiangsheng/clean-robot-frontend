@@ -1,9 +1,11 @@
-.overview-page {
+﻿.overview-page {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  min-height: 100vh;
-  padding: 28px;
+  gap: 14px;
+  height: auto;
+  min-height: calc(100vh - 154px);
+  overflow: visible;
+  padding: 20px 28px 18px;
 }
 
 .overview-page-header {
@@ -12,6 +14,7 @@
   gap: 16px;
   align-items: flex-start;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .overview-page-header .ant-typography {
@@ -22,25 +25,71 @@
   margin-bottom: 6px;
 }
 
-.overview-banner {
-  border-radius: 20px;
+.overview-top-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  width: 100%;
 }
 
-.overview-grid {
-  display: grid;
-  grid-template-columns: 320px minmax(0, 1fr) 360px;
-  gap: 18px;
-  align-items: start;
+.overview-top-action-center {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  justify-content: center;
 }
 
-.overview-column {
+.overview-resource-warning {
+  border: 2px solid rgba(216, 86, 47, 0.46);
+  border-radius: 18px;
+  background: rgba(255, 246, 222, 0.96);
+  box-shadow: 0 14px 30px rgba(216, 86, 47, 0.14);
+}
+
+.overview-resource-warning.ant-alert {
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
+  padding: 10px 18px;
+}
+
+.overview-resource-warning .ant-alert-icon {
+  font-size: 22px;
+  margin-inline-end: 12px;
+  color: #d47a12;
+}
+
+.overview-resource-warning.ant-alert .ant-alert-message {
+  text-align: left;
+  font-size: 20px;
+  font-weight: 900;
+  color: #20282c;
+}
+
+.overview-resource-warning-title {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  min-width: 0;
+  gap: 4px;
+  line-height: 1.2;
+  color: #20282c;
 }
 
-.overview-card {
+.overview-resource-warning-title span {
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.overview-resource-warning .ant-alert-description {
+  text-align: left;
+  font-size: 16px;
+  font-weight: 800;
+  color: #b45309;
+}
+
+.overview-resource-card,
+.overview-panel-card,
+.overview-today-card {
   border-radius: 22px;
   border: 1px solid rgba(119, 133, 138, 0.18);
   background: rgba(247, 243, 235, 0.88);
@@ -50,93 +99,1548 @@
   backdrop-filter: blur(14px);
 }
 
-.overview-card .ant-card-head {
-  min-height: 58px;
+.overview-resource-card .ant-card-head,
+.overview-panel-card .ant-card-head,
+.overview-today-card .ant-card-head {
+  min-height: 50px;
 }
 
-.overview-card .ant-card-head,
-.overview-card .ant-card-body,
-.overview-page-header,
-.overview-capability-main,
-.overview-audit-main {
+.overview-resource-card .ant-card-body,
+.overview-panel-card .ant-card-body,
+.overview-today-card .ant-card-body {
+  padding: 18px 24px;
+}
+
+.overview-primary-grid {
+  display: grid;
+  grid-template-columns: minmax(520px, 1fr) minmax(500px, 0.95fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.overview-primary-grid > .overview-resource-card,
+.overview-primary-grid > .overview-command-card {
   min-width: 0;
 }
 
-.overview-muted {
-  margin-bottom: 0;
-  color: rgba(63, 76, 83, 0.74);
-}
-
-.overview-capability-item,
-.overview-audit-item {
-  display: flex;
-  align-items: flex-start;
-}
-
-.overview-list {
-  display: flex;
-  flex-direction: column;
+.overview-resource-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
-.overview-list > .overview-capability-item,
-.overview-list > .overview-audit-item {
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(119, 133, 138, 0.18);
+.overview-resource-item {
+  display: flex;
+  min-width: 0;
+  min-height: 140px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.4);
 }
 
-.overview-list > .overview-capability-item:last-child,
-.overview-list > .overview-audit-item:last-child {
-  padding-bottom: 0;
-  border-bottom: none;
+.overview-resource-circle-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: rgba(30, 37, 40, 0.92);
 }
 
-.overview-capability-main,
-.overview-audit-main {
+.overview-resource-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 16px;
+}
+
+.overview-resource-icon {
+  display: inline-flex;
+  color: #1f8a78;
+  font-size: 18px;
+}
+
+.overview-resource-tag .ant-tag {
+  margin-inline-end: 0;
+}
+
+.overview-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(520px, 1fr) minmax(500px, 0.95fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.overview-status-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.overview-status-card-grid > .overview-panel-card {
+  height: 100%;
+  min-width: 0;
+}
+
+.overview-manual-card,
+.overview-home-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+}
+
+.overview-command-progress {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.overview-command-progress-title {
+  color: rgba(36, 43, 46, 0.68);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.overview-command-progress .execution-progress-inline {
   width: 100%;
+}
+
+.overview-robot-status-card .ant-card-body {
+  height: calc(100% - 50px);
+}
+
+.overview-manual-card .ant-card-body,
+.overview-home-card .ant-card-body {
+  display: flex;
+  flex: 1 1 auto;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.overview-robot-status-panel,
+.overview-manual-card-body,
+.overview-home-card-body {
+  display: flex;
+  min-height: 104px;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.overview-manual-card-action {
+  pointer-events: auto;
+}
+
+.overview-robot-status-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: rgba(30, 37, 40, 0.92);
+}
+
+.overview-final-today-card .ant-card-body {
+  display: flex;
+  min-height: 148px;
+  align-items: stretch;
+}
+
+.overview-completion-groups {
+  display: grid;
+  width: 100%;
+  gap: 14px;
+}
+
+.overview-completion-group {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  min-width: 0;
+}
+
+.overview-completion-label {
+  display: inline-flex;
+  min-width: 0;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(31, 138, 120, 0.12);
+  color: #1f8a78;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.overview-today-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  width: 100%;
+}
+
+.overview-today-metric {
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.overview-today-metric span {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(36, 43, 46, 0.62);
+}
+
+.overview-today-metric strong {
+  display: block;
+  font-size: 24px;
+  font-weight: 700;
+  color: rgba(30, 37, 40, 0.94);
+}
+
+.overview-home-card-body {
+  flex-direction: column;
+  gap: 8px;
+}
+
+.overview-home-card-button {
+  min-width: 138px;
+  height: 58px;
+  border-radius: 999px;
+  background: #1f8a78;
+  font-size: 22px;
+  font-weight: 900;
+  box-shadow: 0 12px 22px rgba(31, 138, 120, 0.22);
+}
+
+.overview-home-card-button .anticon {
+  font-size: 24px;
+}
+
+.overview-home-card-error {
+  max-width: 100%;
+  color: #b45309;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
 }
 
 @media (max-width: 1220px) {
   .overview-page {
+    height: auto;
+    min-height: calc(100vh - 154px);
+    overflow: visible;
     padding: 22px;
   }
 
-  .overview-grid {
-    grid-template-columns: 320px minmax(0, 1fr);
-  }
-
-  .overview-grid > .overview-column:first-child {
-    grid-column: 1;
-    grid-row: 1 / span 2;
-  }
-
-  .overview-grid > .overview-column:nth-child(2) {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .overview-grid > .overview-column:last-child {
-    grid-column: 2;
-    grid-row: 2;
+  .overview-primary-grid,
+  .overview-summary-grid {
+    grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 960px) {
+@media (min-width: 1221px) {
+  .app-shell.app-module-overview:not(.touch-ui) {
+    height: 100vh;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  .app-shell.app-module-overview:not(.touch-ui) .app-tabs,
+  .app-shell.app-module-overview:not(.touch-ui) .app-tabs > .ant-tabs-content-holder,
+  .app-shell.app-module-overview:not(.touch-ui) .app-tabs > .ant-tabs-content-holder > .ant-tabs-content,
+  .app-shell.app-module-overview:not(.touch-ui) .app-tabs > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane,
+  .app-shell.app-module-overview:not(.touch-ui) .app-single-module-content {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-shell:not(.touch-ui) .app-tabs .overview-page {
+    height: calc(100vh - 138px);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-shell:not(.touch-ui) .app-single-module-content .overview-page {
+    height: calc(100vh - 88px);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-shell:not(.touch-ui) .overview-page {
+    gap: 10px;
+    padding: 10px 28px 12px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-primary-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 10px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-summary-grid {
+    flex: 0 0 150px;
+    min-height: 0;
+    gap: 10px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-card,
+  .app-shell:not(.touch-ui) .overview-panel-card,
+  .app-shell:not(.touch-ui) .overview-today-card {
+    border-radius: 18px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-card .ant-card-head,
+  .app-shell:not(.touch-ui) .overview-panel-card .ant-card-head,
+  .app-shell:not(.touch-ui) .overview-today-card .ant-card-head {
+    min-height: 38px;
+    padding: 0 18px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-card .ant-card-head-title,
+  .app-shell:not(.touch-ui) .overview-panel-card .ant-card-head-title,
+  .app-shell:not(.touch-ui) .overview-today-card .ant-card-head-title {
+    padding: 8px 0;
+    font-size: 16px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-card .ant-card-body,
+  .app-shell:not(.touch-ui) .overview-panel-card .ant-card-body,
+  .app-shell:not(.touch-ui) .overview-today-card .ant-card-body {
+    padding: 10px 14px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-primary-grid > .overview-resource-card,
+  .app-shell:not(.touch-ui) .overview-primary-grid > .overview-command-card,
+  .app-shell:not(.touch-ui) .overview-summary-grid > .overview-panel-card,
+  .app-shell:not(.touch-ui) .overview-summary-grid > .overview-today-card {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .app-shell:not(.touch-ui) .overview-primary-grid > .overview-resource-card .ant-card-body,
+  .app-shell:not(.touch-ui) .overview-primary-grid > .overview-command-card .ant-card-body {
+    height: calc(100% - 38px);
+    min-height: 0;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-grid {
+    height: 100%;
+    gap: 8px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-item {
+    min-height: 0;
+    gap: 2px;
+    border-radius: 14px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-item .ant-progress {
+    margin: -8px 0 -10px;
+    transform: scale(0.76);
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-circle-value {
+    font-size: 20px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-meta {
+    gap: 6px;
+    font-size: 14px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-icon {
+    font-size: 16px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .ant-card-body {
+    height: calc(100% - 38px);
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-content {
+    gap: 8px;
+  }
+
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single {
+    height: 48px;
+  }
+
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector {
+    min-height: 48px;
+    border-radius: 14px;
+    padding-inline: 14px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-task-select .ant-select-selection-item,
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select
+    .ant-select-selection-placeholder {
+    line-height: 46px;
+  }
+
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector
+    .ant-select-selection-item,
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector
+    .ant-select-selection-item
+    *,
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-task-option-label {
+    font-size: 22px !important;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-task-select .ant-select-selection-placeholder,
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-placeholder {
+    font-size: 18px !important;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-grid {
+    grid-template-rows: repeat(2, minmax(58px, 1fr));
+    gap: 8px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-button {
+    min-height: 58px;
+    border-radius: 16px;
+    font-size: 18px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-button .anticon {
+    font-size: 20px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-status {
+    display: none;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-progress {
+    gap: 4px;
+    padding-top: 0;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-progress-title {
+    font-size: 14px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-robot-status-panel,
+  .app-shell:not(.touch-ui) .overview-manual-card-body,
+  .app-shell:not(.touch-ui) .overview-home-card-body,
+  .app-shell:not(.touch-ui) .overview-final-today-card .ant-card-body {
+    min-height: 0;
+  }
+
+  .app-shell:not(.touch-ui) .overview-robot-status-panel .ant-progress {
+    transform: scale(0.78);
+  }
+
+  .app-shell:not(.touch-ui) .overview-home-card-button,
+  .app-shell:not(.touch-ui) .overview-manual-card-action .ant-btn {
+    min-width: 136px;
+    height: 56px;
+    border-radius: 999px;
+    font-size: 22px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-home-card-button .anticon,
+  .app-shell:not(.touch-ui) .overview-manual-card-action .ant-btn .anticon {
+    font-size: 24px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-today-grid {
+    gap: 10px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-today-metric span {
+    margin-bottom: 5px;
+    font-size: 13px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-today-metric strong {
+    font-size: 22px;
+  }
+}
+
+@media (min-width: 1221px) and (max-height: 820px) {
+  .app-shell:not(.touch-ui) .overview-page {
+    gap: 8px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-summary-grid {
+    flex-basis: 132px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-card .ant-card-head,
+  .app-shell:not(.touch-ui) .overview-panel-card .ant-card-head,
+  .app-shell:not(.touch-ui) .overview-today-card .ant-card-head {
+    min-height: 34px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-card .ant-card-head-title,
+  .app-shell:not(.touch-ui) .overview-panel-card .ant-card-head-title,
+  .app-shell:not(.touch-ui) .overview-today-card .ant-card-head-title {
+    padding: 6px 0;
+    font-size: 15px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-card .ant-card-body,
+  .app-shell:not(.touch-ui) .overview-panel-card .ant-card-body,
+  .app-shell:not(.touch-ui) .overview-today-card .ant-card-body {
+    padding: 8px 12px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-primary-grid > .overview-resource-card .ant-card-body,
+  .app-shell:not(.touch-ui) .overview-primary-grid > .overview-command-card .ant-card-body,
+  .app-shell:not(.touch-ui) .overview-command-card .ant-card-body {
+    height: calc(100% - 34px);
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-grid {
+    gap: 7px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-item .ant-progress {
+    margin: -12px 0 -16px;
+    transform: scale(0.66);
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-meta {
+    font-size: 13px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-content {
+    gap: 7px;
+  }
+
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single {
+    height: 44px;
+  }
+
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector {
+    min-height: 44px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-task-select .ant-select-selection-item,
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select
+    .ant-select-selection-placeholder {
+    line-height: 42px;
+  }
+
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector
+    .ant-select-selection-item,
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector
+    .ant-select-selection-item
+    *,
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-task-option-label {
+    font-size: 20px !important;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-grid {
+    grid-template-rows: repeat(2, minmax(50px, 1fr));
+    gap: 7px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-button {
+    min-height: 50px;
+    font-size: 16px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-robot-status-panel .ant-progress {
+    transform: scale(0.68);
+  }
+
+  .app-shell:not(.touch-ui) .overview-home-card-button,
+  .app-shell:not(.touch-ui) .overview-manual-card-action .ant-btn {
+    min-width: 118px;
+    height: 48px;
+    font-size: 20px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-today-metric strong {
+    font-size: 20px;
+  }
+}
+
+@media (min-width: 1221px) {
+  .app-shell.app-module-overview:not(.touch-ui) {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .app-shell.app-module-overview:not(.touch-ui) .app-tabs,
+  .app-shell.app-module-overview:not(.touch-ui) .app-tabs > .ant-tabs-content-holder,
+  .app-shell.app-module-overview:not(.touch-ui) .app-tabs > .ant-tabs-content-holder > .ant-tabs-content,
+  .app-shell.app-module-overview:not(.touch-ui) .app-tabs > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane,
+  .app-shell.app-module-overview:not(.touch-ui) .app-single-module-content {
+    min-height: inherit;
+    overflow: visible;
+  }
+
+  .app-shell.app-module-overview:not(.touch-ui) .app-tabs > .ant-tabs-content-holder {
+    min-height: calc(100vh - 160px);
+  }
+
+  .app-shell.app-module-overview:not(.touch-ui) .app-single-module-content {
+    min-height: calc(100vh - 116px);
+  }
+
+  .app-shell:not(.touch-ui) .app-tabs .overview-page,
+  .app-shell:not(.touch-ui) .app-single-module-content .overview-page {
+    height: auto;
+    min-height: calc(100vh - 154px);
+    overflow: visible;
+  }
+
+  .app-shell:not(.touch-ui) .overview-page {
+    gap: 14px;
+    padding: 20px 28px 28px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-primary-grid,
+  .app-shell:not(.touch-ui) .overview-summary-grid {
+    flex: initial;
+    min-height: 0;
+    gap: 14px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-status-card-grid {
+    gap: 14px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-card,
+  .app-shell:not(.touch-ui) .overview-panel-card,
+  .app-shell:not(.touch-ui) .overview-today-card {
+    height: auto;
+    min-height: 0;
+    border-radius: 22px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-card .ant-card-head,
+  .app-shell:not(.touch-ui) .overview-panel-card .ant-card-head,
+  .app-shell:not(.touch-ui) .overview-today-card .ant-card-head {
+    min-height: 50px;
+    padding: 0 24px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-card .ant-card-head-title,
+  .app-shell:not(.touch-ui) .overview-panel-card .ant-card-head-title,
+  .app-shell:not(.touch-ui) .overview-today-card .ant-card-head-title {
+    padding: 12px 0;
+    font-size: 18px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-card .ant-card-body,
+  .app-shell:not(.touch-ui) .overview-panel-card .ant-card-body,
+  .app-shell:not(.touch-ui) .overview-today-card .ant-card-body,
+  .app-shell:not(.touch-ui) .overview-command-card .ant-card-body,
+  .app-shell:not(.touch-ui) .overview-primary-grid > .overview-resource-card .ant-card-body,
+  .app-shell:not(.touch-ui) .overview-primary-grid > .overview-command-card .ant-card-body {
+    height: auto;
+    min-height: 0;
+    padding: 18px 24px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-manual-card .ant-card-body,
+  .app-shell:not(.touch-ui) .overview-home-card .ant-card-body {
+    display: flex;
+    flex: 1 1 auto;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-grid {
+    height: auto;
+    gap: 12px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-item {
+    min-height: 140px;
+    gap: 8px;
+    border-radius: 18px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-item .ant-progress,
+  .app-shell:not(.touch-ui) .overview-robot-status-panel .ant-progress {
+    margin: 0;
+    transform: none;
+  }
+
+  .app-shell:not(.touch-ui) .overview-robot-status-panel,
+  .app-shell:not(.touch-ui) .overview-manual-card-body,
+  .app-shell:not(.touch-ui) .overview-home-card-body {
+    min-height: 104px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-final-today-card .ant-card-body {
+    min-height: 148px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-circle-value {
+    font-size: 24px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-meta {
+    gap: 8px;
+    font-size: 16px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-resource-icon {
+    font-size: 18px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-content {
+    gap: 14px;
+  }
+
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single {
+    height: 58px;
+  }
+
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector {
+    min-height: 58px;
+    border-radius: 18px;
+    padding-inline: 18px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-task-select .ant-select-selection-item,
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select
+    .ant-select-selection-placeholder {
+    line-height: 56px;
+  }
+
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector
+    .ant-select-selection-item,
+  .app-shell:not(.touch-ui)
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector
+    .ant-select-selection-item
+    *,
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-task-option-label {
+    color: #1f282c !important;
+    font-size: 26px !important;
+    font-weight: 900 !important;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-task-select .ant-select-selection-placeholder,
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-placeholder {
+    color: rgba(31, 40, 44, 0.4) !important;
+    font-size: 24px !important;
+    font-weight: 850 !important;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-grid {
+    grid-template-rows: repeat(2, minmax(88px, 1fr));
+    gap: 14px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-button {
+    min-height: 88px;
+    border-radius: 18px;
+    font-size: 24px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-card .execution-command-card-button .anticon {
+    font-size: 24px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-progress {
+    gap: 10px;
+    padding-top: 4px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-command-progress-title {
+    font-size: 16px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-home-card-button,
+  .app-shell:not(.touch-ui) .overview-manual-card-action .ant-btn {
+    min-width: 138px;
+    height: 58px;
+    border-radius: 999px;
+    font-size: 22px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-home-card-button .anticon,
+  .app-shell:not(.touch-ui) .overview-manual-card-action .ant-btn .anticon {
+    font-size: 24px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-today-grid {
+    gap: 14px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-today-metric span {
+    margin-bottom: 6px;
+    font-size: 14px;
+  }
+
+  .app-shell:not(.touch-ui) .overview-today-metric strong {
+    font-size: 24px;
+  }
+}
+
+.touch-ui .overview-page {
+  height: auto;
+  min-height: calc(100svh - 116px);
+  overflow: visible;
+  padding-bottom: 28px;
+}
+
+@media (orientation: landscape) and (min-width: 900px) and (max-height: 900px) {
+  .touch-ui .overview-page {
+    gap: 10px;
+    height: auto;
+    min-height: calc(100svh - 116px);
+    overflow: visible;
+    padding: 10px 20px 12px;
+  }
+
+  .touch-ui .overview-top-action-row {
+    top: 80px;
+    left: 20px;
+    right: 20px;
+  }
+
+  .touch-ui .overview-resource-warning.ant-alert {
+    padding: 8px 18px;
+  }
+
+  .touch-ui .overview-resource-warning .ant-alert-icon {
+    font-size: 24px;
+    margin-inline-end: 12px;
+  }
+
+  .touch-ui .overview-resource-warning-title span,
+  .touch-ui .overview-resource-warning.ant-alert .ant-alert-message {
+    font-size: 24px;
+  }
+
+  .touch-ui .overview-primary-grid {
+    grid-template-columns: minmax(420px, 1fr) minmax(420px, 0.96fr);
+    gap: 10px;
+  }
+
+  .touch-ui .overview-summary-grid {
+    grid-template-columns: minmax(420px, 1fr) minmax(420px, 0.96fr);
+    gap: 10px;
+  }
+
+  .touch-ui .overview-status-card-grid {
+    gap: 10px;
+  }
+
+  .touch-ui .overview-resource-card,
+  .touch-ui .overview-panel-card,
+  .touch-ui .overview-today-card {
+    border-radius: 18px;
+  }
+
+  .touch-ui .overview-resource-card .ant-card-head,
+  .touch-ui .overview-panel-card .ant-card-head,
+  .touch-ui .overview-today-card .ant-card-head {
+    min-height: 38px;
+    padding: 0 18px;
+  }
+
+  .touch-ui .overview-resource-card .ant-card-head-title,
+  .touch-ui .overview-panel-card .ant-card-head-title,
+  .touch-ui .overview-today-card .ant-card-head-title {
+    padding: 8px 0;
+    font-size: 16px;
+  }
+
+  .touch-ui .overview-resource-card .ant-card-body,
+  .touch-ui .overview-panel-card .ant-card-body,
+  .touch-ui .overview-today-card .ant-card-body {
+    padding: 10px 14px;
+  }
+
+  .touch-ui .overview-manual-card .ant-card-body,
+  .touch-ui .overview-home-card .ant-card-body {
+    display: flex;
+    flex: 1 1 auto;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .touch-ui .overview-resource-grid {
+    gap: 8px;
+  }
+
+  .touch-ui .overview-resource-item {
+    min-height: 96px;
+    gap: 2px;
+    border-radius: 14px;
+  }
+
+  .touch-ui .overview-resource-item .ant-progress {
+    margin: -8px 0 -6px;
+    transform: scale(0.74);
+  }
+
+  .touch-ui .overview-resource-circle-value {
+    font-size: 20px;
+  }
+
+  .touch-ui .overview-resource-meta {
+    gap: 6px;
+    font-size: 14px;
+  }
+
+  .touch-ui .overview-resource-icon {
+    font-size: 16px;
+  }
+
+  .touch-ui .overview-command-card .ant-card-body {
+    height: calc(100% - 38px);
+  }
+
+  .touch-ui .overview-command-card .execution-command-card-content {
+    gap: 9px;
+  }
+
+  .touch-ui .overview-command-card .execution-command-card-task-select.ant-select-single {
+    height: 44px;
+  }
+
+  .touch-ui
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector {
+    min-height: 44px;
+    border-radius: 14px;
+    padding-inline: 14px;
+  }
+
+  .touch-ui .overview-command-card .execution-command-card-task-select .ant-select-selection-item,
+  .touch-ui .overview-command-card .execution-command-card-task-select .ant-select-selection-placeholder {
+    line-height: 42px;
+  }
+
+  .touch-ui
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector
+    .ant-select-selection-item,
+  .touch-ui
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector
+    .ant-select-selection-item
+    *,
+  .touch-ui .overview-command-card .execution-command-card-task-option-label {
+    font-size: 22px !important;
+  }
+
+  .touch-ui .overview-command-card .execution-command-card-task-select .ant-select-selection-placeholder,
+  .touch-ui .overview-command-card .execution-command-card-placeholder {
+    font-size: 18px !important;
+  }
+
+  .touch-ui .overview-command-card .execution-command-card-grid {
+    grid-template-rows: repeat(2, minmax(64px, 1fr));
+    gap: 8px;
+  }
+
+  .touch-ui .overview-command-card .execution-command-card-button {
+    min-height: 64px;
+    border-radius: 16px;
+    font-size: 20px;
+  }
+
+  .touch-ui .overview-command-card .execution-command-card-button .anticon {
+    font-size: 22px;
+  }
+
+  .touch-ui .overview-command-card .execution-command-card-status {
+    display: none;
+  }
+
+  .touch-ui .overview-command-progress {
+    gap: 5px;
+    padding-top: 0;
+  }
+
+  .touch-ui .overview-command-progress-title {
+    font-size: 14px;
+  }
+
+  .touch-ui .overview-robot-status-panel,
+  .touch-ui .overview-manual-card-body,
+  .touch-ui .overview-home-card-body {
+    min-height: 92px;
+  }
+
+  .touch-ui .overview-final-today-card .ant-card-body {
+    min-height: 142px;
+  }
+
+  .touch-ui .overview-robot-status-panel .ant-progress {
+    transform: scale(0.82);
+  }
+
+  .touch-ui .overview-home-card-button,
+  .touch-ui .overview-manual-card-action .ant-btn {
+    min-width: 128px;
+    height: 54px;
+    border-radius: 999px;
+    font-size: 22px;
+  }
+
+  .touch-ui .overview-home-card-button .anticon,
+  .touch-ui .overview-manual-card-action .ant-btn .anticon {
+    font-size: 24px;
+  }
+
+  .touch-ui .overview-today-grid {
+    gap: 10px;
+  }
+
+  .touch-ui .overview-today-metric span {
+    margin-bottom: 5px;
+    font-size: 13px;
+  }
+
+  .touch-ui .overview-today-metric strong {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 760px) {
   .overview-page {
     padding: 18px;
   }
 
-  .overview-grid {
+  .overview-top-action-row {
+    top: 122px;
+    left: 18px;
+    right: 18px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .overview-primary-grid,
+  .overview-resource-grid,
+  .overview-status-card-grid,
+  .overview-summary-grid,
+  .overview-today-grid {
     grid-template-columns: 1fr;
   }
 
-  .overview-grid > .overview-column:first-child,
-  .overview-grid > .overview-column:nth-child(2),
-  .overview-grid > .overview-column:last-child {
-    grid-column: auto;
-    grid-row: auto;
+  .overview-completion-group {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .overview-completion-label {
+    justify-content: flex-start;
+    width: fit-content;
+    padding: 0 14px;
+  }
+}
+
+@media (orientation: landscape) and (min-width: 900px) and (max-height: 900px) {
+  .touch-ui.app-shell.app-module-overview {
+    height: 100svh;
+    min-height: 100svh;
+    overflow: hidden;
+  }
+
+  .touch-ui.app-shell.app-module-overview .app-tabs,
+  .touch-ui.app-shell.app-module-overview .app-tabs > .ant-tabs-content-holder,
+  .touch-ui.app-shell.app-module-overview .app-tabs > .ant-tabs-content-holder > .ant-tabs-content,
+  .touch-ui.app-shell.app-module-overview .app-tabs > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane,
+  .touch-ui.app-shell.app-module-overview .app-single-module-content {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .touch-ui.app-shell.app-module-overview .app-tabs > .ant-tabs-content-holder {
+    height: calc(100svh - var(--app-topbar-height) - 53px);
+  }
+
+  .touch-ui.app-shell.app-module-overview .app-single-module-content {
+    height: calc(100svh - var(--app-topbar-height));
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-page {
+    height: 100%;
+    min-height: 0;
+    gap: 8px;
+    overflow: hidden;
+    padding: 8px 20px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-top-action-row {
+    position: fixed;
+    top: 5px;
+    left: 0;
+    right: 0;
+    z-index: 35;
+    width: 100%;
+    min-height: 0;
+    height: 0;
+    pointer-events: none;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-top-action-center {
+    height: 0;
+    align-items: flex-start;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-resource-warning.ant-alert {
+    min-height: 32px;
+    padding: 4px 12px;
+    border-radius: 16px;
+    box-shadow: 0 8px 20px rgba(216, 86, 47, 0.12);
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-resource-warning.ant-alert {
+    padding: 6px 14px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-resource-warning .ant-alert-icon {
+    font-size: 20px;
+    margin-inline-end: 10px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-resource-warning-title {
+    flex-flow: row wrap;
+    column-gap: 12px;
+    row-gap: 2px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-resource-warning-title span,
+  .touch-ui.app-shell.app-module-overview .overview-resource-warning.ant-alert .ant-alert-message {
+    font-size: 20px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-resource-warning-title span,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-resource-warning.ant-alert .ant-alert-message {
+    font-size: 17px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-primary-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.96fr);
+    gap: 8px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-summary-grid {
+    flex: 0 0 202px;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.96fr);
+    gap: 8px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-resource-card,
+  .touch-ui.app-shell.app-module-overview .overview-panel-card,
+  .touch-ui.app-shell.app-module-overview .overview-today-card {
+    height: 100%;
+    min-height: 0;
+    border-radius: 16px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-resource-card .ant-card-head,
+  .touch-ui.app-shell.app-module-overview .overview-panel-card .ant-card-head,
+  .touch-ui.app-shell.app-module-overview .overview-today-card .ant-card-head {
+    min-height: 34px;
+    padding: 0 14px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-resource-card .ant-card-head-title,
+  .touch-ui.app-shell.app-module-overview .overview-panel-card .ant-card-head-title,
+  .touch-ui.app-shell.app-module-overview .overview-today-card .ant-card-head-title {
+    padding: 6px 0;
+    font-size: 15px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-resource-card .ant-card-body,
+  .touch-ui.app-shell.app-module-overview .overview-panel-card .ant-card-body,
+  .touch-ui.app-shell.app-module-overview .overview-today-card .ant-card-body {
+    height: calc(100% - 34px);
+    min-height: 0;
+    padding: 8px 12px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-resource-grid {
+    height: 100%;
+    gap: 6px;
+    grid-auto-rows: minmax(0, 1fr);
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-resource-item {
+    min-height: 0;
+    gap: 0;
+    border-radius: 12px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-resource-item .ant-progress {
+    margin: -14px 0 -16px;
+    transform: scale(0.66);
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-resource-circle-value {
+    font-size: 19px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-resource-meta {
+    gap: 5px;
+    font-size: 13px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-command-card .execution-command-card-content {
+    gap: 7px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-command-card .execution-command-card-task-select.ant-select-single {
+    height: 42px;
+  }
+
+  .touch-ui.app-shell.app-module-overview
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector {
+    min-height: 42px;
+    border-radius: 13px;
+    padding-inline: 12px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-command-card .execution-command-card-task-select .ant-select-selection-item,
+  .touch-ui.app-shell.app-module-overview .overview-command-card .execution-command-card-task-select .ant-select-selection-placeholder {
+    line-height: 40px;
+  }
+
+  .touch-ui.app-shell.app-module-overview
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector
+    .ant-select-selection-item,
+  .touch-ui.app-shell.app-module-overview
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector
+    .ant-select-selection-item
+    *,
+  .touch-ui.app-shell.app-module-overview .overview-command-card .execution-command-card-task-option-label {
+    font-size: 20px !important;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-command-card .execution-command-card-grid {
+    grid-template-rows: repeat(2, minmax(56px, 1fr));
+    gap: 7px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-command-card .execution-command-card-button {
+    min-height: 56px;
+    border-radius: 14px;
+    font-size: 18px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-command-progress {
+    gap: 4px;
+    padding-top: 0;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-command-progress-title {
+    font-size: 13px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-status-card-grid {
+    height: 100%;
+    gap: 8px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-robot-status-panel,
+  .touch-ui.app-shell.app-module-overview .overview-manual-card-body,
+  .touch-ui.app-shell.app-module-overview .overview-home-card-body,
+  .touch-ui.app-shell.app-module-overview .overview-final-today-card .ant-card-body {
+    min-height: 0;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-robot-status-panel .ant-progress {
+    transform: scale(0.76);
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-home-card-button,
+  .touch-ui.app-shell.app-module-overview .overview-manual-card-action .ant-btn {
+    min-width: 118px;
+    height: 48px;
+    border-radius: 999px;
+    font-size: 20px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-completion-groups {
+    gap: 7px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-completion-group {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-completion-label {
+    height: 28px;
+    font-size: 14px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-today-grid {
+    gap: 8px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-today-metric span {
+    margin-bottom: 4px;
+    font-size: 12px;
+  }
+
+  .touch-ui.app-shell.app-module-overview .overview-today-metric strong {
+    font-size: 20px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-page {
+    gap: 12px;
+    height: auto;
+    justify-content: flex-start;
+    padding: 18px 22px 14px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-primary-grid,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-summary-grid {
+    gap: 12px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-primary-grid {
+    flex: 0 0 402px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-summary-grid {
+    flex: 0 0 222px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-resource-card,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-panel-card,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-today-card {
+    border-radius: 18px;
+    box-shadow:
+      0 14px 30px rgba(24, 38, 47, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.64);
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-resource-card .ant-card-head,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-panel-card .ant-card-head,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-today-card .ant-card-head {
+    min-height: 38px;
+    padding: 0 16px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-resource-card .ant-card-head-title,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-panel-card .ant-card-head-title,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-today-card .ant-card-head-title {
+    padding: 8px 0;
+    font-size: 16px;
+    font-weight: 900;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-resource-card .ant-card-body,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-panel-card .ant-card-body,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-today-card .ant-card-body {
+    height: calc(100% - 38px);
+    padding: 10px 14px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-resource-grid {
+    gap: 12px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-resource-item {
+    gap: 10px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.52);
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-resource-item .ant-progress {
+    margin: 0;
+    transform: scale(1.08);
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-resource-circle-value {
+    font-size: 27px;
+    font-weight: 900;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-resource-meta {
+    gap: 8px;
+    font-size: 17px;
+    font-weight: 900;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-resource-icon {
+    font-size: 18px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-command-card .execution-command-card-content {
+    gap: 12px;
+    justify-content: space-between;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-command-card .execution-command-card-task-select.ant-select-single {
+    height: 56px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector {
+    min-height: 56px;
+    border-radius: 16px;
+    padding-inline: 16px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-command-card .execution-command-card-task-select .ant-select-selection-item,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-command-card .execution-command-card-task-select .ant-select-selection-placeholder {
+    line-height: 54px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector
+    .ant-select-selection-item,
+  .touch-ui.app-shell.app-role-operator.app-module-overview
+    .overview-command-card
+    .execution-command-card-task-select.ant-select-single
+    .ant-select-selector
+    .ant-select-selection-item
+    *,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-command-card .execution-command-card-task-option-label {
+    font-size: 23px !important;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-command-card .execution-command-card-task-select .ant-select-selection-placeholder,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-command-card .execution-command-card-placeholder {
+    font-size: 20px !important;
+    font-weight: 850 !important;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-command-card .execution-command-card-grid {
+    flex: 0 0 202px;
+    grid-template-rows: repeat(2, minmax(95px, 1fr));
+    gap: 12px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-command-card .execution-command-card-button {
+    min-height: 95px;
+    border-radius: 18px;
+    font-size: 23px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-command-card .execution-command-card-button .anticon {
+    font-size: 22px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-command-progress-title {
+    font-size: 15px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-status-card-grid {
+    gap: 12px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-robot-status-panel,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-manual-card-body,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-home-card-body {
+    min-height: 0;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-robot-status-panel .ant-progress {
+    transform: scale(1.08);
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-robot-status-value {
+    font-size: 20px;
+    font-weight: 900;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-home-card-button,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-manual-card-action .ant-btn {
+    min-width: 156px;
+    height: 64px;
+    font-size: 24px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-home-card-button .anticon,
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-manual-card-action .ant-btn .anticon {
+    font-size: 24px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-completion-groups {
+    gap: 12px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-completion-group {
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-completion-label {
+    height: 32px;
+    font-size: 15px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-today-grid {
+    gap: 12px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-today-metric span {
+    margin-bottom: 5px;
+    font-size: 14px;
+  }
+
+  .touch-ui.app-shell.app-role-operator.app-module-overview .overview-today-metric strong {
+    font-size: 25px;
+    font-weight: 900;
   }
 }

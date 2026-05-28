@@ -367,8 +367,31 @@ export function normalizeMapCatalogEntry(record) {
     displayName: pickString(record, ['display_name', 'displayName']) || mapName,
     enabled: Boolean(toBoolean(pickValue(record, ['enabled']))),
     isActive: Boolean(toBoolean(pickValue(record, ['is_active', 'isActive']))),
+    isRuntime: Boolean(toBoolean(pickValue(record, ['is_runtime', 'isRuntime', 'runtime']))),
+    isPendingSwitch: Boolean(
+      toBoolean(pickValue(record, ['is_pending_switch', 'isPendingSwitch'])),
+    ),
     mapId: pickString(record, ['map_id', 'mapId', 'id']),
     mapMd5: pickString(record, ['map_md5', 'mapMd5']),
+    revisionId: pickString(record, [
+      'map_revision_id',
+      'mapRevisionId',
+      'revision_id',
+      'revisionId',
+      'revision',
+    ]),
+    activeRevisionId: pickString(record, [
+      'active_revision_id',
+      'activeRevisionId',
+      'active_map_revision_id',
+      'activeMapRevisionId',
+    ]),
+    runtimeRevisionId: pickString(record, [
+      'runtime_revision_id',
+      'runtimeRevisionId',
+      'runtime_map_revision_id',
+      'runtimeMapRevisionId',
+    ]),
     raw: record,
   }
 }
@@ -660,6 +683,16 @@ export function normalizeSlamWorkflowStateRecord(record) {
     trackedPoseAgeS: toNumber(
       pickValue(record, ['tracked_pose_age_s', 'trackedPoseAgeS']),
     ),
+    trackedPoseFrame: pickString(record, ['tracked_pose_frame', 'trackedPoseFrame']),
+    trackedPoseX: toNumber(pickValue(record, ['tracked_pose_x', 'trackedPoseX'])),
+    trackedPoseY: toNumber(pickValue(record, ['tracked_pose_y', 'trackedPoseY'])),
+    trackedPoseTheta: toNumber(
+      pickValue(record, ['tracked_pose_theta', 'trackedPoseTheta']),
+    ),
+    trackedPoseStampMs: toTimestamp(
+      pickValue(record, ['tracked_pose_stamp_ms', 'trackedPoseStampMs']),
+    ),
+    trackedPoseSource: pickString(record, ['tracked_pose_source', 'trackedPoseSource']),
     missionState: pickString(record, ['mission_state', 'missionState']),
     phase: pickString(record, ['phase']),
     publicState: pickString(record, ['public_state', 'publicState']),

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { bootstrapUsers, openSiteDatabase } from './database.mjs'
+import {
+  bootstrapUsers,
+  createSession,
+  deleteAllSessions,
+  findSessionByTokenHash,
+  openSiteDatabase,
+} from './database.mjs'
+import { hashSessionToken } from './security.mjs'
+import { verifyPassword } from './security.mjs'
 
 function createBootstrapUser(username, role = 'engineer') {
   return {
@@ -12,7 +20,7 @@ function createBootstrapUser(username, role = 'engineer') {
 }
 
 describe('site gateway database bootstrapUsers', () => {
-  it('adds missing bootstrap users into an existing database without overwriting current users', () => {
+  it('syncs bootstrap users and adds missing users into an existing database', () => {
     const database = openSiteDatabase(':memory:')
 
     bootstrapUsers(database, [
@@ -22,36 +30,49 @@ describe('site gateway database bootstrapUsers', () => {
 
     bootstrapUsers(database, [
       createBootstrapUser('operator', 'operator'),
-      createBootstrapUser('engineer', 'engineer'),
+      {
+        ...createBootstrapUser('engineer', 'admin'),
+        displayName: '现场管理员',
+        password: 'engineer-new-password',
+      },
       createBootstrapUser('baer', 'engineer'),
     ])
 
     const users = database
       .prepare(
         `
-      SELECT username, display_name AS displayName, role
+      SELECT username, display_name AS displayName, role, password_hash AS passwordHash
       FROM users
       ORDER BY username
     `,
       )
       .all()
 
-    expect(users).toEqual([
-      {
-        username: 'baer',
-        displayName: 'baer',
-        role: 'engineer',
-      },
-      {
-        username: 'engineer',
-        displayName: 'engineer',
-        role: 'engineer',
-      },
-      {
-        username: 'operator',
-        displayName: 'operator',
-        role: 'operator',
-      },
+    expect(users.map(({ passwordHash, ...user }) => user)).toEqual([
+      { username: 'baer', displayName: 'baer', role: 'engineer' },
+      { username: 'engineer', displayName: '现场管理员', role: 'admin' },
+      { username: 'operator', displayName: 'operator', role: 'operator' },
     ])
+    expect(verifyPassword('engineer-new-password', users[1].passwordHash)).toBe(true)
+  })
+
+  it('can clear persisted sessions on gateway startup', () => {
+    const database = openSiteDatabase(':memory:')
+
+    bootstrapUsers(database, [createBootstrapUser('operator', 'operator')])
+    const user = database.prepare('SELECT id FROM users WHERE username = ?').get('operator')
+    const tokenHash = hashSessionToken('startup-session-token')
+
+    createSession(database, {
+      userId: user.id,
+      tokenHash,
+      expiresAt: Date.now() + 60_000,
+    })
+
+    expect(findSessionByTokenHash(database, tokenHash)).not.toBeNull()
+
+    deleteAllSessions(database)
+
+    expect(findSessionByTokenHash(database, tokenHash)).toBeNull()
   })
 })

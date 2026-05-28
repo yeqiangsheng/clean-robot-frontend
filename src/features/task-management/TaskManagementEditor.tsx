@@ -9,7 +9,6 @@ import {
   Space,
   Switch,
   Tag,
-  Typography,
 } from 'antd'
 import { CheckCircleOutlined, PlusOutlined } from '@ant-design/icons'
 
@@ -31,7 +30,6 @@ interface TaskManagementEditorProps {
   planProfileLoading: boolean
   sysProfileLoading: boolean
   editorMapName: string
-  selectedZoneSummary: string | null
   repeatAfterFullChargeEnabled: boolean
   onSubmit: () => void
   onCancel: () => void
@@ -55,7 +53,6 @@ export function TaskManagementEditor({
   planProfileLoading,
   sysProfileLoading,
   editorMapName,
-  selectedZoneSummary,
   repeatAfterFullChargeEnabled,
   onSubmit,
   onCancel,
@@ -79,11 +76,7 @@ export function TaskManagementEditor({
         <AppEmptyState description="可新建任务，或选择已有任务进入编辑。" />
       ) : (
         <Form<TaskDraftInput> form={form} layout="vertical" className="task-form">
-          <Form.Item
-            name="taskId"
-            label="任务 ID"
-            extra="填 0 时由后端自动分配 task_id。"
-          >
+          <Form.Item name="taskId" label="任务 ID">
             <InputNumber
               disabled={editorMode === 'edit'}
               min={0}
@@ -115,7 +108,6 @@ export function TaskManagementEditor({
           <Form.Item
             name="mapName"
             label="地图名称"
-            extra="区域下拉选项会随当前所选地图加载。"
             rules={[{ required: true, message: '请选择地图。' }]}
           >
             <Select
@@ -150,12 +142,6 @@ export function TaskManagementEditor({
               }
             />
           </Form.Item>
-
-          {selectedZoneSummary ? (
-            <Typography.Paragraph className="task-footnote">
-              {selectedZoneSummary}
-            </Typography.Paragraph>
-          ) : null}
 
           <Form.Item
             name="planProfileName"
@@ -255,10 +241,6 @@ export function TaskManagementEditor({
             </Button>
             <Button onClick={onCancel}>取消</Button>
           </Space>
-
-          <Typography.Paragraph className="task-footnote">
-            后端校验错误会直接展示，方便现场在不中断上下文的情况下查看真实失败原因。
-          </Typography.Paragraph>
         </Form>
       )}
     </Card>

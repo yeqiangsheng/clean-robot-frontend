@@ -1,84 +1,74 @@
-﻿import { useMemo } from 'react'
-import type { ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
+  Button,
   Card,
   Descriptions,
-  Space,
-  Tag,
+  Progress,
+  Statistic,
   Typography,
 } from 'antd'
 import {
-  ApiOutlined,
+  DashboardOutlined,
   DeploymentUnitOutlined,
+  DownloadOutlined,
+  FieldTimeOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
 
-import { AppEmptyState } from '../components/feedback/AppEmptyState'
+import { exportDiagnostics } from '../api/gateway/diagnosticsGateway'
 import { AppFeedbackBanner } from '../components/feedback/AppFeedbackBanner'
-import { RosbridgeEndpointControl } from '../components/ros/RosbridgeEndpointControl'
 import { SystemReadinessCard } from '../components/readiness/SystemReadinessCard'
-import { LiveCommandContextCard } from '../components/runtime/LiveCommandContextCard'
+import { ExecutionProgressDetailsCard } from '../components/runtime/ExecutionProgressCard'
+import { useRuntimeMonitor } from '../hooks/useRuntimeMonitor'
 import { useRosConnection } from '../hooks/useRosConnection'
 import { useExecutionSessionStore } from '../stores/executionSessionStore'
-import { useRuntimeMonitorStore } from '../stores/runtimeMonitorStore'
-import type { RuntimeTopicHealth, RuntimeTopicSnapshot } from '../types/runtime'
-import {
-  STATION_STATUS_NON_BLOCKING_DESCRIPTION,
-  STATION_STATUS_NON_BLOCKING_TITLE,
-  getStationStatusTag,
-  isStationStatusNonBlocking,
-} from '../utils/stationStatus'
+import type { RuntimeTopicKey, RuntimeTopicSnapshot } from '../types/runtime'
 import './RuntimeMonitoringPage.css'
 
 type JsonRecord = Record<string, unknown>
+
+const CORE_RUNTIME_TOPIC_KEYS: RuntimeTopicKey[] = [
+  'taskState',
+  'executorState',
+  'batteryState',
+]
+
+interface CumulativeRunRecord {
+  completed: boolean
+  maxDistanceM: number
+}
+
+interface CumulativeRuntimeStats {
+  completedTaskCount: number
+  runs: Record<string, CumulativeRunRecord>
+}
+
+const CUMULATIVE_STATS_STORAGE_KEY = 'clean_robot_runtime_cumulative_stats_v2'
+const CLEANING_WIDTH_M = 0.6
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function getConnectionTag(status: string) {
-  switch (status) {
-    case 'connected':
-      return { color: 'success', label: '已连接' }
-    case 'connecting':
-      return { color: 'processing', label: '连接中' }
-    case 'error':
-      return { color: 'error', label: '连接异常' }
-    case 'mock':
-      return { color: 'purple', label: 'Mock 数据' }
-    case 'closed':
-      return { color: 'warning', label: '连接关闭' }
-    default:
-      return { color: 'default', label: '未连接' }
+function getStringTopicValue(topic: RuntimeTopicSnapshot) {
+  if (!isRecord(topic.rawMessage)) {
+    return null
   }
+
+  if (typeof topic.rawMessage.data === 'string' && topic.rawMessage.data.trim().length > 0) {
+    return topic.rawMessage.data
+  }
+
+  if (typeof topic.rawMessage.state === 'string' && topic.rawMessage.state.trim().length > 0) {
+    return topic.rawMessage.state
+  }
+
+  return null
 }
 
-function getHealthPresentation(health: RuntimeTopicHealth) {
-  switch (health) {
-    case 'live':
-      return { color: 'green', label: 'live' }
-    case 'stale':
-      return { color: 'orange', label: 'stale' }
-    case 'waiting':
-      return { color: 'blue', label: 'waiting' }
-    case 'unavailable':
-      return { color: 'default', label: 'unavailable' }
-    default:
-      return { color: 'red', label: 'disconnected' }
-  }
-}
-
-function formatAge(ageMs: number | null) {
-  if (ageMs === null) {
-    return '--'
-  }
-
-  if (ageMs < 1000) {
-    return `${ageMs} ms ago`
-  }
-
-  return `${(ageMs / 1000).toFixed(1)} s ago`
+function getRecordTopicValue(topic: RuntimeTopicSnapshot) {
+  return isRecord(topic.rawMessage) ? topic.rawMessage : null
 }
 
 function formatLocalTimestamp(value: number | null) {
@@ -89,39 +79,10 @@ function formatLocalTimestamp(value: number | null) {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
-function formatRosStamp(value: unknown) {
-  if (!isRecord(value)) {
-    return '--'
-  }
-
-  const secs = typeof value.secs === 'number' ? value.secs : null
-  const nsecs = typeof value.nsecs === 'number' ? value.nsecs : 0
-
-  if (secs === null) {
-    return '--'
-  }
-
-  return new Date(secs * 1000 + Math.floor(nsecs / 1_000_000)).toLocaleString(
-    'zh-CN',
-    {
-      hour12: false,
-    },
-  )
-}
-
 function formatNumber(value: unknown, digits = 2) {
   return typeof value === 'number' && Number.isFinite(value)
     ? value.toFixed(digits)
     : '--'
-}
-
-function formatPercent(value: unknown, digits = 0) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return '--'
-  }
-
-  const normalized = value >= 0 && value <= 1 ? value * 100 : value
-  return `${normalized.toFixed(digits)}%`
 }
 
 function formatInteger(value: unknown) {
@@ -130,199 +91,338 @@ function formatInteger(value: unknown) {
     : '--'
 }
 
-function formatBool(value: unknown) {
-  return typeof value === 'boolean' ? (value ? 'true' : 'false') : '--'
-}
-
-function formatArray(value: unknown) {
-  return Array.isArray(value) ? value.join(', ') : '--'
-}
-
-function getStringTopicValue(topic: RuntimeTopicSnapshot) {
-  if (!isRecord(topic.rawMessage)) {
+function normalizePercent(value: unknown) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
     return null
   }
 
-  return typeof topic.rawMessage.data === 'string' ? topic.rawMessage.data : null
+  const percent = value >= 0 && value <= 1 ? value * 100 : value
+  return Math.max(0, Math.min(100, percent))
 }
 
-function getRunProgress(topic: RuntimeTopicSnapshot) {
-  return isRecord(topic.rawMessage) ? topic.rawMessage : null
-}
+function formatPercent(value: unknown, digits = 0) {
+  const percent = normalizePercent(value)
 
-function getBatteryState(topic: RuntimeTopicSnapshot) {
-  return isRecord(topic.rawMessage) ? topic.rawMessage : null
-}
-
-function getCombinedStatus(topic: RuntimeTopicSnapshot) {
-  return isRecord(topic.rawMessage) ? topic.rawMessage : null
-}
-
-function TopicStatusTag({ topic }: { topic: RuntimeTopicSnapshot }) {
-  const presentation = getHealthPresentation(topic.health)
-
-  return <Tag color={presentation.color}>{presentation.label}</Tag>
-}
-
-function TopicStateNote({
-  topic,
-  emptyMessage,
-}: {
-  topic: RuntimeTopicSnapshot
-  emptyMessage: string
-}) {
-  if (topic.health === 'disconnected') {
-    return (
-      <AppFeedbackBanner
-        tone="error"
-        title="站点网关 ROS 会话已断开"
-        description="请先恢复站点网关 ROS 会话，再查看运行监控实时快照。"
-      />
-    )
+  if (percent === null) {
+    return '--'
   }
 
-  if (topic.health === 'unavailable') {
-    return (
-      <AppFeedbackBanner
-        tone="warning"
-        title="Topic 暂不可用"
-        description={
-          topic.messageType
-            ? '现场后端当前没有这个 topic 的活跃发布者。'
-            : '站点网关没有拿到这个 topic 的有效类型信息。'
-        }
-      />
-    )
+  return `${percent.toFixed(digits)}%`
+}
+
+function formatBool(value: unknown) {
+  if (typeof value !== 'boolean') {
+    return '--'
   }
 
-  if (topic.health === 'waiting') {
-    return (
-      <AppFeedbackBanner
-        tone="info"
-        title="等待首帧"
-        description={emptyMessage}
-      />
-    )
+  return value ? '是' : '否'
+}
+
+function formatArray(value: unknown) {
+  if (!Array.isArray(value) || value.length === 0) {
+    return '--'
   }
 
-  if (topic.health === 'stale') {
-    return (
-      <AppFeedbackBanner
-        tone="warning"
-        title="Topic 数据已延迟"
-        description="站点网关仍在持有该 topic 快照，但最后一帧已经超过预期刷新周期。"
-      />
-    )
+  return value.join(', ')
+}
+
+function getTopicFreshness(topic: RuntimeTopicSnapshot) {
+  switch (topic.health) {
+    case 'live':
+      return '实时'
+    case 'stale':
+      return '延迟'
+    case 'waiting':
+      return '等待数据'
+    case 'unavailable':
+      return '暂无数据'
+    default:
+      return '离线'
+  }
+}
+
+function getCurrentTaskLabel(taskId: number | null, taskName: string | null) {
+  if (taskId === null && !taskName) {
+    return '--'
+  }
+
+  if (taskId !== null && taskName) {
+    return `${taskName} / #${taskId}`
+  }
+
+  return taskName || String(taskId)
+}
+
+function canUseLocalStorage() {
+  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+}
+
+function createEmptyCumulativeStats(): CumulativeRuntimeStats {
+  return {
+    completedTaskCount: 0,
+    runs: {},
+  }
+}
+
+function loadCumulativeStats() {
+  if (!canUseLocalStorage()) {
+    return createEmptyCumulativeStats()
+  }
+
+  try {
+    const raw = window.localStorage.getItem(CUMULATIVE_STATS_STORAGE_KEY)
+    if (!raw) {
+      return createEmptyCumulativeStats()
+    }
+
+    const parsed = JSON.parse(raw) as Partial<CumulativeRuntimeStats>
+    if (!isRecord(parsed.runs)) {
+      return createEmptyCumulativeStats()
+    }
+
+    return {
+      completedTaskCount:
+        typeof parsed.completedTaskCount === 'number' && Number.isFinite(parsed.completedTaskCount)
+          ? parsed.completedTaskCount
+          : 0,
+      runs: parsed.runs as Record<string, CumulativeRunRecord>,
+    }
+  } catch {
+    return createEmptyCumulativeStats()
+  }
+}
+
+function saveCumulativeStats(stats: CumulativeRuntimeStats) {
+  if (!canUseLocalStorage()) {
+    return
+  }
+
+  window.localStorage.setItem(CUMULATIVE_STATS_STORAGE_KEY, JSON.stringify(stats))
+}
+
+function getFiniteNumber(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value
+    }
   }
 
   return null
 }
 
-function StationStatusNote({ topic }: { topic: RuntimeTopicSnapshot }) {
-  if (isStationStatusNonBlocking(topic)) {
-    return (
-      <AppFeedbackBanner
-        tone="warning"
-        title={STATION_STATUS_NON_BLOCKING_TITLE}
-        description={STATION_STATUS_NON_BLOCKING_DESCRIPTION}
-      />
-    )
+function getRunId(runProgress: JsonRecord) {
+  const runId = runProgress.run_id
+  const taskId = runProgress.task_id
+  const zoneId = runProgress.zone_id
+
+  if (typeof runId === 'string' && runId.trim()) {
+    return runId.trim()
   }
 
+  if (typeof taskId === 'number' && Number.isFinite(taskId)) {
+    return `task-${taskId}`
+  }
+
+  if (typeof zoneId === 'string' && zoneId.trim()) {
+    return `zone-${zoneId.trim()}`
+  }
+
+  return 'active-run'
+}
+
+function getRunCompleted(runProgress: JsonRecord) {
+  const progressPercent =
+    normalizePercent(runProgress.progress_pct) ?? normalizePercent(runProgress.progress_0_1)
+  const state =
+    typeof runProgress.state === 'string' ? runProgress.state.trim().toUpperCase() : ''
+
   return (
-    <TopicStateNote
-      topic={topic}
-      emptyMessage="站点网关正在等待 /station_status 的首帧。"
-    />
+    (progressPercent !== null && progressPercent >= 99.5) ||
+    ['DONE', 'FINISHED', 'COMPLETE', 'COMPLETED', 'SUCCEEDED', 'SUCCESS'].some((token) =>
+      state.includes(token),
+    )
   )
 }
 
-function TopicMetaSummary({
-  topic,
-  extraRows,
-}: {
-  topic: RuntimeTopicSnapshot
-  extraRows?: ReactNode
-}) {
-  return (
-    <Descriptions column={2} size="small" colon={false}>
-      <Descriptions.Item label="topic">{topic.topicName}</Descriptions.Item>
-      <Descriptions.Item label="type">{topic.messageType || '--'}</Descriptions.Item>
-      <Descriptions.Item label="publishers">{topic.publishers.length}</Descriptions.Item>
-      <Descriptions.Item label="subscribers">{topic.subscribers.length}</Descriptions.Item>
-      <Descriptions.Item label="message_count">{topic.messageCount}</Descriptions.Item>
-      <Descriptions.Item label="last_update">
-        {formatLocalTimestamp(topic.lastMessageAt)}
-      </Descriptions.Item>
-      <Descriptions.Item label="age">{formatAge(topic.ageMs)}</Descriptions.Item>
-      <Descriptions.Item label="subscription">
-        {topic.subscribeError || topic.metaError || '--'}
-      </Descriptions.Item>
-      {extraRows}
-    </Descriptions>
+function getRunDistance(runProgress: JsonRecord) {
+  return getFiniteNumber(
+    runProgress.path_s,
+    runProgress.cleaned_distance_m,
+    runProgress.covered_distance_m,
+    runProgress.distance_m,
   )
+}
+
+function formatDistanceMetric(value: number) {
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(2)} km`
+  }
+
+  return `${value.toFixed(value >= 100 ? 0 : 1)} m`
+}
+
+function formatAreaMetric(value: number) {
+  return `${value.toFixed(value >= 100 ? 0 : 1)} m²`
+}
+
+function downloadJson(filename: string, payload: unknown) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: 'application/json;charset=utf-8',
+  })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 export function RuntimeMonitoringPage() {
-  const { snapshot, defaultUrl, connect } = useRosConnection()
+  const { snapshot, reconnect } = useRosConnection()
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [exportingDiagnostics, setExportingDiagnostics] = useState(false)
   const focusedTaskId = useExecutionSessionStore((state) => state.focusedTaskId)
-  const metaError = useRuntimeMonitorStore((state) => state.metaError)
-  const topicList = useRuntimeMonitorStore((state) => state.topicList)
-  const topicMap = useRuntimeMonitorStore((state) => state.topicMap)
-
-  const connectionTag = getConnectionTag(snapshot.status)
-  const liveCount = useMemo(
-    () => topicList.filter((topic) => topic.health === 'live').length,
-    [topicList],
-  )
-  const handleReconnect = async (url?: string) => {
-    await connect((url ?? snapshot.url) || defaultUrl)
-  }
+  const focusedTaskName = useExecutionSessionStore((state) => state.focusedTaskName)
+  const lastResult = useExecutionSessionStore((state) => state.lastResult)
+  const transportError = useExecutionSessionStore((state) => state.transportError)
+  const runtimeMonitor = useRuntimeMonitor(snapshot, { includeEndpointInfo: false })
+  const { metaError, topicList, topicMap } = runtimeMonitor
 
   const taskStateTopic = topicMap.taskState
   const taskEventTopic = topicMap.taskEvent
   const executorStateTopic = topicMap.executorState
-  const runProgressTopic = topicMap.runProgress
   const batteryStateTopic = topicMap.batteryState
   const combinedStatusTopic = topicMap.combinedStatus
   const dockSupplyTopic = topicMap.dockSupplyState
   const stationStatusTopic = topicMap.stationStatus
+  const runProgressTopic = topicMap.runProgress
+  const runProgress = getRecordTopicValue(runProgressTopic)
+  const [cumulativeStats, setCumulativeStats] = useState<CumulativeRuntimeStats>(() =>
+    loadCumulativeStats(),
+  )
+  const observedActiveRunIdsRef = useRef<Set<string>>(new Set())
+
+  const coreRuntimeTopics = useMemo(
+    () => topicList.filter((topic) => CORE_RUNTIME_TOPIC_KEYS.includes(topic.key)),
+    [topicList],
+  )
+  const coreLiveTopicCount = useMemo(
+    () => coreRuntimeTopics.filter((topic) => topic.health === 'live').length,
+    [coreRuntimeTopics],
+  )
 
   const taskStateValue = getStringTopicValue(taskStateTopic)
   const taskEventValue = getStringTopicValue(taskEventTopic)
   const executorStateValue = getStringTopicValue(executorStateTopic)
   const dockSupplyValue = getStringTopicValue(dockSupplyTopic)
   const stationStatusValue = getStringTopicValue(stationStatusTopic)
-  const stationStatusTag = getStationStatusTag(stationStatusTopic)
-  const runProgress = getRunProgress(runProgressTopic)
-  const batteryState = getBatteryState(batteryStateTopic)
-  const combinedStatus = getCombinedStatus(combinedStatusTopic)
+  const batteryState = getRecordTopicValue(batteryStateTopic)
+  const combinedStatus = getRecordTopicValue(combinedStatusTopic)
+  const batteryPercent =
+    normalizePercent(batteryState?.percentage) ??
+    normalizePercent(combinedStatus?.battery_percentage)
+  const latestRuntimeUpdate = Math.max(
+    taskStateTopic.lastMessageAt ?? 0,
+    executorStateTopic.lastMessageAt ?? 0,
+    batteryStateTopic.lastMessageAt ?? 0,
+    combinedStatusTopic.lastMessageAt ?? 0,
+    dockSupplyTopic.lastMessageAt ?? 0,
+    stationStatusTopic.lastMessageAt ?? 0,
+    runProgressTopic.lastMessageAt ?? 0,
+  )
+  const cumulativeDistanceM = useMemo(
+    () =>
+      Object.values(cumulativeStats.runs).reduce(
+        (totalDistance, record) => totalDistance + Math.max(0, record.maxDistanceM || 0),
+        0,
+      ),
+    [cumulativeStats.runs],
+  )
+  const cumulativeAreaM2 = cumulativeDistanceM * CLEANING_WIDTH_M
+  const currentTaskLabel = getCurrentTaskLabel(focusedTaskId, focusedTaskName)
+  const latestResultLabel = lastResult
+    ? lastResult.success
+      ? '成功'
+      : '失败'
+    : '空闲'
+  const runtimeDataStatus = !snapshot.isConnected
+    ? '离线'
+    : coreLiveTopicCount === CORE_RUNTIME_TOPIC_KEYS.length
+      ? '核心实时'
+      : coreLiveTopicCount > 0
+        ? '部分实时'
+        : '等待数据'
+
+  const handleReconnect = async () => {
+    await reconnect()
+  }
+
+  const handleExportDiagnostics = async () => {
+    setExportError(null)
+    setExportingDiagnostics(true)
+
+    try {
+      const { filename, bundle } = await exportDiagnostics()
+      downloadJson(filename, bundle)
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : '导出诊断包失败。')
+    } finally {
+      setExportingDiagnostics(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!runProgress) {
+      return
+    }
+
+    const runId = getRunId(runProgress)
+    const distanceM = getRunDistance(runProgress)
+    const completed = getRunCompleted(runProgress)
+    const observedActiveRunIds = observedActiveRunIdsRef.current
+
+    if (!completed) {
+      observedActiveRunIds.add(runId)
+    } else if (!observedActiveRunIds.has(runId)) {
+      return
+    }
+
+    if (distanceM === null && !completed) {
+      return
+    }
+
+    setCumulativeStats((current) => {
+      const previousRun = current.runs[runId] ?? {
+        completed: false,
+        maxDistanceM: 0,
+      }
+      const nextRun = {
+        completed: previousRun.completed || completed,
+        maxDistanceM:
+          distanceM === null ? previousRun.maxDistanceM : Math.max(previousRun.maxDistanceM, distanceM),
+      }
+      const nextStats = {
+        completedTaskCount:
+          !previousRun.completed && nextRun.completed
+            ? current.completedTaskCount + 1
+            : current.completedTaskCount,
+        runs: {
+          ...current.runs,
+          [runId]: nextRun,
+        },
+      }
+
+      saveCumulativeStats(nextStats)
+      return nextStats
+    })
+  }, [runProgress])
 
   return (
     <div className="runtime-page" data-testid="runtime-page">
-      <header className="runtime-page-header">
-        <div>
-          <Typography.Title level={2}>运行监控</Typography.Title>
-          <Typography.Paragraph>
-            面向现场值守的实时监控页，聚焦任务状态、执行器状态、进度、电池、底盘综合状态与补给/充电站反馈。页面优先展示 live topic 回报，不再使用里程碑阶段口径。
-          </Typography.Paragraph>
-        </div>
-        <Space size="middle" wrap>
-          <Tag color="gold">实时监控</Tag>
-          <Tag color={connectionTag.color}>{connectionTag.label}</Tag>
-          <Tag color="geekblue">{liveCount} 个 live topic</Tag>
-          <RosbridgeEndpointControl
-            snapshot={snapshot}
-            defaultUrl={defaultUrl}
-            onConnect={handleReconnect}
-          />
-        </Space>
-      </header>
-
       {snapshot.status === 'error' && snapshot.lastError ? (
         <AppFeedbackBanner
           tone="error"
-          title="站点网关 ROS 连接失败"
+          title="站点连接异常"
           description={snapshot.lastError}
           actionLabel="重连"
           onAction={() => void handleReconnect()}
@@ -330,19 +430,10 @@ export function RuntimeMonitoringPage() {
         />
       ) : null}
 
-      {snapshot.status === 'mock' ? (
-        <AppFeedbackBanner
-          tone="info"
-          title="当前正在使用本地 Mock 数据"
-          description="如需切回现场站点网关，请在 .env.development 中设置 VITE_USE_MOCK_DATA=false。"
-          className="runtime-banner"
-        />
-      ) : null}
-
       {metaError ? (
         <AppFeedbackBanner
-          tone="warning"
-          title="部分 runtime topic 元数据加载失败"
+          tone="error"
+          title="运行数据未返回"
           description={metaError}
           actionLabel="重连"
           onAction={() => void handleReconnect()}
@@ -350,383 +441,229 @@ export function RuntimeMonitoringPage() {
         />
       ) : null}
 
+      {exportError ? (
+        <AppFeedbackBanner
+          tone="error"
+          title="诊断包导出失败"
+          description={exportError}
+          className="runtime-banner"
+        />
+      ) : null}
+
+      <div className="runtime-action-row">
+        <Button
+          className="runtime-export-diagnostics"
+          data-testid="runtime-export-diagnostics"
+          type="primary"
+          icon={<DownloadOutlined />}
+          loading={exportingDiagnostics}
+          onClick={() => void handleExportDiagnostics()}
+        >
+          导出诊断包
+        </Button>
+      </div>
+
+      <div className="runtime-summary-grid">
+        <Card className="runtime-summary-card">
+          <Statistic
+            title="任务管理"
+            value={taskStateValue || '--'}
+            prefix={<DashboardOutlined />}
+          />
+        </Card>
+        <Card className="runtime-summary-card">
+          <Statistic
+            title="执行器"
+            value={executorStateValue || '--'}
+            prefix={<FieldTimeOutlined />}
+          />
+        </Card>
+        <Card className="runtime-summary-card">
+          <Statistic
+            title="电量"
+            value={batteryPercent === null ? '--' : Math.round(batteryPercent)}
+            suffix={batteryPercent === null ? undefined : '%'}
+            prefix={<ThunderboltOutlined />}
+          />
+        </Card>
+        <Card className="runtime-summary-card">
+          <Statistic
+            title="数据状态"
+            value={runtimeDataStatus}
+            prefix={<DeploymentUnitOutlined />}
+          />
+        </Card>
+      </div>
+
+      <Card
+        title="累计完成情况"
+        className="runtime-card runtime-cumulative-card"
+      >
+        <div className="runtime-cumulative-grid">
+          <div className="runtime-cumulative-metric">
+            <span>已完成任务</span>
+            <strong>{cumulativeStats.completedTaskCount} 个</strong>
+          </div>
+          <div className="runtime-cumulative-metric">
+            <span>清扫距离</span>
+            <strong>{formatDistanceMetric(cumulativeDistanceM)}</strong>
+          </div>
+          <div className="runtime-cumulative-metric">
+            <span>清扫面积</span>
+            <strong>{formatAreaMetric(cumulativeAreaM2)}</strong>
+          </div>
+        </div>
+      </Card>
+
+      <div className="runtime-readiness">
+        <SystemReadinessCard
+          snapshot={snapshot}
+          taskId={focusedTaskId ?? 0}
+          title="任务启动前 readiness"
+          compact
+        />
+      </div>
+
       <div className="runtime-grid">
         <aside className="runtime-column">
-          <LiveCommandContextCard title="实时执行上下文" />
-          <SystemReadinessCard
-            snapshot={snapshot}
-            taskId={focusedTaskId ?? 0}
-            compact
-            title="系统 readiness"
-          />
-
-          <Card
-            title="Task State"
-            className="runtime-card"
-            extra={<TopicStatusTag topic={taskStateTopic} />}
-          >
-            <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-              <Descriptions column={1} size="small" colon={false}>
-                <Descriptions.Item label="manager_state">
-                  <Typography.Text data-testid="runtime-task-state-value">
-                    {taskStateValue || '--'}
-                  </Typography.Text>
-                </Descriptions.Item>
-                <Descriptions.Item label="latest_event">
-                  {taskEventValue || '--'}
-                </Descriptions.Item>
-              </Descriptions>
-
-              <TopicStateNote
-                topic={taskStateTopic}
-                emptyMessage="站点网关正在等待任务管理器发布最新状态。"
-              />
-
-              {!taskEventValue && taskEventTopic.health !== 'live' ? (
-                <TopicStateNote
-                  topic={taskEventTopic}
-                  emptyMessage="当前站点会话里还没有收到新的 task-manager event。"
-                />
-              ) : null}
-
-              <TopicMetaSummary
-                topic={taskStateTopic}
-                extraRows={
-                  <>
-                    <Descriptions.Item label="event_topic" span={2}>
-                      {taskEventTopic.topicName}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="event_status">
-                      {getHealthPresentation(taskEventTopic.health).label}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="event_messages">
-                      {taskEventTopic.messageCount}
-                    </Descriptions.Item>
-                  </>
-                }
-              />
-            </Space>
+          <Card title="当前任务" className="runtime-card">
+            <Descriptions column={1} size="small" colon={false}>
+              <Descriptions.Item label="任务">
+                <Typography.Text data-testid="shared-current-page-task">
+                  {currentTaskLabel}
+                </Typography.Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="任务 ID">
+                <Typography.Text data-testid="shared-focused-task-id">
+                  {focusedTaskId ?? '--'}
+                </Typography.Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="最近命令">
+                <Typography.Text data-testid="shared-latest-command">
+                  {lastResult?.command ?? '--'}
+                </Typography.Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="命令结果">
+                <Typography.Text data-testid="shared-latest-result">
+                  {latestResultLabel}
+                </Typography.Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="回执">
+                <Typography.Text data-testid="shared-latest-command-message">
+                  {transportError || lastResult?.message || '--'}
+                </Typography.Text>
+              </Descriptions.Item>
+            </Descriptions>
           </Card>
 
-          <Card
-            title="Executor State"
-            className="runtime-card"
-            extra={<TopicStatusTag topic={executorStateTopic} />}
-          >
-            <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-              <Descriptions column={1} size="small" colon={false}>
-                <Descriptions.Item label="executor_state">
-                  <Typography.Text data-testid="runtime-executor-state-value">
-                    {executorStateValue || '--'}
-                  </Typography.Text>
-                </Descriptions.Item>
-              </Descriptions>
+          <Card title="任务状态" className="runtime-card">
+            <Descriptions column={1} size="small" colon={false}>
+              <Descriptions.Item label="任务管理器">
+                <Typography.Text data-testid="runtime-task-state-value">
+                  {taskStateValue || '--'}
+                </Typography.Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="执行器">
+                <Typography.Text data-testid="runtime-executor-state-value">
+                  {executorStateValue || '--'}
+                </Typography.Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="最近事件">{taskEventValue || '--'}</Descriptions.Item>
+              <Descriptions.Item label="任务状态数据">
+                {getTopicFreshness(taskStateTopic)}
+              </Descriptions.Item>
+              <Descriptions.Item label="执行器数据">
+                {getTopicFreshness(executorStateTopic)}
+              </Descriptions.Item>
+            </Descriptions>
+          </Card>
 
-              <TopicStateNote
-                topic={executorStateTopic}
-                emptyMessage="站点网关正在等待执行器状态 topic 的首帧。"
-              />
-
-              <TopicMetaSummary topic={executorStateTopic} />
-            </Space>
+          <Card title="补给与回桩" className="runtime-card">
+            <Descriptions column={1} size="small" colon={false}>
+              <Descriptions.Item label="补给状态">{dockSupplyValue || '--'}</Descriptions.Item>
+              <Descriptions.Item label="充电桩">{stationStatusValue || '--'}</Descriptions.Item>
+              <Descriptions.Item label="补给数据">{getTopicFreshness(dockSupplyTopic)}</Descriptions.Item>
+              <Descriptions.Item label="充电桩数据">
+                {getTopicFreshness(stationStatusTopic)}
+              </Descriptions.Item>
+            </Descriptions>
           </Card>
         </aside>
 
         <main className="runtime-column">
-          <Card
-            title="Run Progress"
+          <ExecutionProgressDetailsCard
             className="runtime-card"
-            extra={<TopicStatusTag topic={runProgressTopic} />}
-          >
-            {runProgress ? (
-              <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+            topic={topicMap.runProgress}
+          />
+
+          <Card title="机器人状态" className="runtime-card">
+            <div className="runtime-status-sections">
+              <section className="runtime-status-section">
+                <div className="runtime-section-title">电池</div>
+                <Progress
+                  percent={batteryPercent === null ? 0 : Math.round(batteryPercent)}
+                  status={batteryPercent !== null && batteryPercent < 20 ? 'exception' : 'active'}
+                />
                 <Descriptions column={2} size="small" colon={false}>
-                  <Descriptions.Item label="run_id">
-                    {typeof runProgress.run_id === 'string' ? runProgress.run_id : '--'}
+                  <Descriptions.Item label="SOC">
+                    {formatPercent(batteryState?.percentage ?? combinedStatus?.battery_percentage)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="zone_id">
-                    {typeof runProgress.zone_id === 'string' ? runProgress.zone_id : '--'}
+                  <Descriptions.Item label="电压">
+                    {formatNumber(batteryState?.voltage ?? combinedStatus?.battery_voltage, 2)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="plan_id">
-                    {typeof runProgress.plan_id === 'string' ? runProgress.plan_id : '--'}
+                  <Descriptions.Item label="电流">
+                    {formatNumber(batteryState?.current, 2)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="state">
-                    {typeof runProgress.state === 'string' ? runProgress.state : '--'}
+                  <Descriptions.Item label="温度">
+                    {formatNumber(batteryState?.temperature, 1)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="mode">
-                    {typeof runProgress.mode === 'string' ? runProgress.mode : '--'}
+                  <Descriptions.Item label="电池在线">
+                    {formatBool(batteryState?.present)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="plan_profile">
-                    {typeof runProgress.plan_profile === 'string'
-                      ? runProgress.plan_profile
-                      : '--'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="sys_profile">
-                    {typeof runProgress.sys_profile === 'string'
-                      ? runProgress.sys_profile
-                      : '--'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="interlock_active">
-                    {formatBool(runProgress.interlock_active)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="interlock_reason">
-                    {typeof runProgress.interlock_reason === 'string'
-                      ? runProgress.interlock_reason || '--'
-                      : '--'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="message_count">
-                    <Typography.Text data-testid="runtime-run-progress-message-count">
-                      {runProgressTopic.messageCount}
-                    </Typography.Text>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="progress_pct">
-                    {formatNumber(runProgress.progress_pct, 1)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="progress_0_1">
-                    {formatNumber(runProgress.progress_0_1, 3)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="exec_index">
-                    {formatInteger(runProgress.exec_index)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="path_index">
-                    {formatInteger(runProgress.path_index)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="path_s">
-                    {formatNumber(runProgress.path_s, 2)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="block_id">
-                    {formatInteger(runProgress.block_id)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="block_length_m">
-                    {formatNumber(runProgress.block_length_m, 2)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="total_length_m">
-                    {formatNumber(runProgress.total_length_m, 2)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="v_mps">
-                    {formatNumber(runProgress.v_mps, 3)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="w_rps">
-                    {formatNumber(runProgress.w_rps, 3)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="error_code">
-                    {typeof runProgress.error_code === 'string'
-                      ? runProgress.error_code || '--'
-                      : '--'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="error_msg">
-                    {typeof runProgress.error_msg === 'string'
-                      ? runProgress.error_msg || '--'
-                      : '--'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="stamp" span={2}>
-                    <Typography.Text data-testid="runtime-run-progress-stamp">
-                      {formatRosStamp(runProgress.stamp)}
-                    </Typography.Text>
+                  <Descriptions.Item label="电池数据">
+                    {getTopicFreshness(batteryStateTopic)}
                   </Descriptions.Item>
                 </Descriptions>
+              </section>
 
-                <TopicMetaSummary topic={runProgressTopic} />
-              </Space>
-            ) : (
-              <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-                <TopicStateNote
-                  topic={runProgressTopic}
-                  emptyMessage="站点网关正在等待 /coverage_executor/run_progress 的首帧。"
-                />
-                <AppEmptyState
-                  title="尚未收到 run progress"
-                  description="收到首条实时 run progress 后，这里会展示完整字段。"
-                />
-              </Space>
-            )}
-          </Card>
-
-          <Card
-            title="Topic Health"
-            className="runtime-card"
-            extra={<ApiOutlined />}
-          >
-            <div className="runtime-topic-list">
-              {topicList.map((topic) => (
-                <div key={topic.topicName} className="runtime-topic-row">
-                  <div className="runtime-topic-main">
-                    <Typography.Text strong>{topic.label}</Typography.Text>
-                    <Typography.Text type="secondary">
-                      {topic.topicName}
-                    </Typography.Text>
-                  </div>
-                  <div className="runtime-topic-side">
-                    <TopicStatusTag topic={topic} />
-                    <Typography.Text type="secondary">
-                      {topic.messageCount} msgs
-                    </Typography.Text>
-                  </div>
-                </div>
-              ))}
+              <section className="runtime-status-section">
+                <div className="runtime-section-title">清洁机构</div>
+                <Descriptions column={2} size="small" colon={false}>
+                  <Descriptions.Item label="清水量">
+                    {formatPercent(combinedStatus?.clean_level)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="污水量">
+                    {formatPercent(combinedStatus?.sewage_level)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="刷盘位置">
+                    {formatInteger(combinedStatus?.brush_position)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="刮水耙位置">
+                    {formatInteger(combinedStatus?.scraper_position)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="障碍状态">
+                    {formatArray(combinedStatus?.obstacle_status)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="综合数据">
+                    {getTopicFreshness(combinedStatusTopic)}
+                  </Descriptions.Item>
+                </Descriptions>
+              </section>
             </div>
           </Card>
+
+          <Card title="数据更新时间" className="runtime-card runtime-update-card">
+            <Descriptions column={2} size="small" colon={false}>
+              <Descriptions.Item label="最近更新">
+                {latestRuntimeUpdate > 0 ? formatLocalTimestamp(latestRuntimeUpdate) : '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label="核心通道">
+                {coreLiveTopicCount} / {CORE_RUNTIME_TOPIC_KEYS.length}
+              </Descriptions.Item>
+            </Descriptions>
+          </Card>
         </main>
-
-        <aside className="runtime-column">
-          <Card
-            title="Battery / Robot Status"
-            className="runtime-card"
-            extra={<ThunderboltOutlined />}
-          >
-            <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-              <Card
-                size="small"
-                className="runtime-inner-card"
-                title={
-                  <Space>
-                    <span>Battery State</span>
-                    <TopicStatusTag topic={batteryStateTopic} />
-                  </Space>
-                }
-              >
-                {batteryState ? (
-                  <Descriptions column={1} size="small" colon={false}>
-                    <Descriptions.Item label="percentage">
-                      {formatPercent(batteryState.percentage)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="voltage">
-                      {formatNumber(batteryState.voltage, 2)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="current">
-                      {formatNumber(batteryState.current, 2)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="temperature">
-                      {formatNumber(batteryState.temperature, 1)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="present">
-                      {formatBool(batteryState.present)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="status_code">
-                      {formatInteger(batteryState.power_supply_status)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="health_code">
-                      {formatInteger(batteryState.power_supply_health)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="location">
-                      {typeof batteryState.location === 'string'
-                        ? batteryState.location || '--'
-                        : '--'}
-                    </Descriptions.Item>
-                  </Descriptions>
-                ) : (
-                  <TopicStateNote
-                    topic={batteryStateTopic}
-                    emptyMessage="站点网关正在等待 /battery_state 的首帧。"
-                  />
-                )}
-              </Card>
-
-              <Card
-                size="small"
-                className="runtime-inner-card"
-                title={
-                  <Space>
-                    <span>Combined Status</span>
-                    <TopicStatusTag topic={combinedStatusTopic} />
-                  </Space>
-                }
-              >
-                {combinedStatus ? (
-                  <Descriptions column={1} size="small" colon={false}>
-                    <Descriptions.Item label="battery_percentage">
-                      {formatInteger(combinedStatus.battery_percentage)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="battery_voltage">
-                      {formatInteger(combinedStatus.battery_voltage)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="sewage_level">
-                      {formatInteger(combinedStatus.sewage_level)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="clean_level">
-                      {formatInteger(combinedStatus.clean_level)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="brush_position">
-                      {formatInteger(combinedStatus.brush_position)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="scraper_position">
-                      {formatInteger(combinedStatus.scraper_position)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="obstacle_status">
-                      {formatArray(combinedStatus.obstacle_status)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="region">
-                      {formatArray(combinedStatus.region)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="status">
-                      {formatArray(combinedStatus.status)}
-                    </Descriptions.Item>
-                  </Descriptions>
-                ) : (
-                  <TopicStateNote
-                    topic={combinedStatusTopic}
-                    emptyMessage="站点网关正在等待 /combined_status 的首帧。"
-                  />
-                )}
-              </Card>
-            </Space>
-          </Card>
-
-          <Card
-            title="Dock / Supply Status"
-            className="runtime-card"
-            extra={<DeploymentUnitOutlined />}
-          >
-            <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-              <Card
-                size="small"
-                className="runtime-inner-card"
-                title={
-                  <Space>
-                    <span>dock_supply/state</span>
-                    <TopicStatusTag topic={dockSupplyTopic} />
-                  </Space>
-                }
-              >
-                {dockSupplyValue ? (
-                  <Descriptions column={1} size="small" colon={false}>
-                    <Descriptions.Item label="state">
-                      {dockSupplyValue}
-                    </Descriptions.Item>
-                  </Descriptions>
-                ) : (
-                  <TopicStateNote
-                    topic={dockSupplyTopic}
-                    emptyMessage="站点网关正在等待 /dock_supply/state 的首帧。"
-                  />
-                )}
-              </Card>
-
-              <Card
-                size="small"
-                className="runtime-inner-card"
-                title={
-                  <Space>
-                    <span>station_status</span>
-                    <Tag color={stationStatusTag.color}>{stationStatusTag.label}</Tag>
-                  </Space>
-                }
-              >
-                {stationStatusValue ? (
-                  <Descriptions column={1} size="small" colon={false}>
-                    <Descriptions.Item label="state">
-                      {stationStatusValue}
-                    </Descriptions.Item>
-                  </Descriptions>
-                ) : (
-                  <StationStatusNote topic={stationStatusTopic} />
-                )}
-              </Card>
-            </Space>
-          </Card>
-        </aside>
       </div>
     </div>
   )
 }
-

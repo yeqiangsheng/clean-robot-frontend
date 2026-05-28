@@ -1,23 +1,16 @@
-import { Card, Space, Tag, Typography } from 'antd'
+import { Card, Progress, Typography } from 'antd'
 
-import type { RosConnectionSnapshot } from '../../types/ros'
 import type { SlamPageMode } from '../../utils/slam'
 import type { SlamWorkflowState } from '../../types/slam-workflow'
 import {
   formatPercent,
   getLocalizationTag,
-  getMapFreshnessTag,
-  getSlamConnectionTag,
   getSlamPageModeTag,
-  getTaskReadyTag,
   getWorkflowStateTag,
 } from '../../utils/slam'
 
 type SlamStatusHeaderProps = {
-  snapshot: RosConnectionSnapshot
   state: SlamWorkflowState | null
-  canStartTask: boolean | null
-  odomValid: boolean | null
   pageMode: SlamPageMode
 }
 
@@ -39,54 +32,42 @@ function StatusMetric({
 }
 
 export function SlamStatusHeader({
-  snapshot,
   state,
-  canStartTask,
-  odomValid,
   pageMode,
 }: SlamStatusHeaderProps) {
-  const connectionTag = getSlamConnectionTag(snapshot.status)
   const workflowTag = getWorkflowStateTag(state)
   const localizationTag = getLocalizationTag(state)
-  const readinessTag = getTaskReadyTag(canStartTask)
-  const mapTag = getMapFreshnessTag(state)
   const pageModeTag = getSlamPageModeTag(pageMode)
-  const odomTag =
-    odomValid === null
-      ? { color: 'default', label: '里程计未检查' }
-      : odomValid
-        ? { color: 'success', label: '里程计正常' }
-        : { color: 'error', label: '里程计异常' }
+  const rawProgress = state?.activeJobProgress01 ?? null
+  const progressPercent =
+    rawProgress === null || !Number.isFinite(rawProgress)
+      ? null
+      : rawProgress >= 0 && rawProgress <= 1
+        ? rawProgress * 100
+        : rawProgress
 
   return (
     <Card className="slam-card slam-status-hero">
-      <div className="slam-status-hero-top">
+      <div className="slam-status-summary">
         <div>
-          <Typography.Title level={4}>SLAM 工作台</Typography.Title>
-          <Typography.Paragraph className="slam-card-copy">
-            状态来自 `/clean_robot_server/slam_state`，作业来自
-            `/clean_robot_server/slam_job_state` 与 `/clean_robot_server/app/get_slam_job`，
-            长动作统一提交到 `/clean_robot_server/app/submit_slam_command`，实时地图继续订阅
-            `/map`。
-          </Typography.Paragraph>
+          <Typography.Text className="slam-status-metric-label">当前状态</Typography.Text>
+          <Typography.Title level={3}>{pageModeTag.label}</Typography.Title>
+          <Typography.Text className="slam-status-subtitle">
+            {workflowTag.label} / {localizationTag.label}
+          </Typography.Text>
         </div>
-        <Space wrap>
-          <Tag color={connectionTag.color}>{connectionTag.label}</Tag>
-          <Tag color={workflowTag.color}>{workflowTag.label}</Tag>
-          <Tag color={localizationTag.color}>{localizationTag.label}</Tag>
-          <Tag color={readinessTag.color}>{readinessTag.label}</Tag>
-          <Tag color={odomTag.color}>{odomTag.label}</Tag>
-          <Tag color={mapTag.color}>{mapTag.label}</Tag>
-          <Tag color={pageModeTag.color}>{pageModeTag.label}</Tag>
-        </Space>
+        {progressPercent !== null ? (
+          <div className="slam-status-progress">
+            <Progress percent={progressPercent} showInfo />
+          </div>
+        ) : null}
       </div>
 
       <div className="slam-status-metrics">
         <StatusMetric label="活动地图" value={state?.activeMapName || '--'} />
-        <StatusMetric label="运行时地图" value={state?.runtimeMapName || '--'} />
-        <StatusMetric label="当前模式" value={state?.currentMode || '--'} />
+        <StatusMetric label="运行地图" value={state?.runtimeMapName || '--'} />
         <StatusMetric label="定位状态" value={state?.localizationState || '--'} />
-        <StatusMetric label="活动作业 ID" value={state?.activeJobId || '--'} />
+        <StatusMetric label="当前模式" value={state?.currentMode || '--'} />
         <StatusMetric label="作业阶段" value={state?.activeJobPhase || '--'} />
         <StatusMetric
           label="作业进度"

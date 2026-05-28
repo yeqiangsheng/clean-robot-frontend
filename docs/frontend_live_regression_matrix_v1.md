@@ -32,7 +32,7 @@
   - `mission_state=IDLE`
   - `executor_state=IDLE`
 - 如果要跑建图写动作：
-  - `can_relocalize` 按现场实际状态成立；旧环境如果仍暴露 `can_restart_localization`，只作为兼容门禁字段。
+  - `can_relocalize` 按现场实际状态成立。
   - `can_start_mapping / can_save_mapping / can_stop_mapping` 按现场实际状态成立。
 
 ## 3. 自动化分层
@@ -124,7 +124,7 @@ npm.cmd run test:e2e:live:write:map
 | A0-10 | 运行监控页 | `运行监控` | `Task State / Executor State / Topic Health` 卡片存在 | runtime snapshot 渲染正常 |
 | A0-11 | Map catalog | `/api/maps` | 地图列表非空，至少一张 active map | 地图资产 CRUD 的读入口可用 |
 | A0-12 | Current map | `/api/maps/current` | `map_name / map_data.info.width / height` 有真值 | live `/map` 所需底图可读 |
-| A0-13 | Site editor lists | `/api/workbench/alignment`、`/api/workbench/zones`、`/api/workbench/no-go-areas`、`/api/workbench/virtual-walls` | canonical site 服务返回 `200`，列表是数组 | 业务读入口不再依赖旧 rosbridge 直连 |
+| A0-13 | Site editor lists | `/api/workbench/alignment`、`/api/workbench/zones`、`/api/workbench/no-go-areas`、`/api/workbench/virtual-walls` | canonical site 服务返回 `200`，列表是数组 | 业务读入口统一经 Site Gateway |
 | A0-14 | Zone detail / plan path | `/api/workbench/zones/:id`、`/api/workbench/zones/:id/plan-path` | 如果存在 zone，详情和 plan path 返回 `200` | 区域详情和路径读取可用 |
 | A0-15 | MapWorkbench 页 | `地图工作台` | 页面 heading 可见，当前 map name 在 UI 可见 | Web 画布工作台可渲染 |
 

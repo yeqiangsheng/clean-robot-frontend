@@ -1,5 +1,5 @@
-import { Button, Card, Descriptions, Popconfirm, Space, Tag, Typography } from 'antd'
-import { DatabaseOutlined, EditOutlined } from '@ant-design/icons'
+import { Button, Card, Descriptions, Popconfirm, Space, Tag } from 'antd'
+import { EditOutlined } from '@ant-design/icons'
 
 import { AppEmptyState } from '../../components/feedback/AppEmptyState'
 import { AppFeedbackBanner } from '../../components/feedback/AppFeedbackBanner'
@@ -17,7 +17,6 @@ interface TaskManagementDetailProps {
   isRefreshing: boolean
   error: string | null
   isSubmitting: boolean
-  metadataEntries: Array<[string, unknown]>
   zoneLabel: string
   planProfileLabel: string
   sysProfileLabel: string
@@ -31,7 +30,6 @@ export function TaskManagementDetail({
   isRefreshing,
   error,
   isSubmitting,
-  metadataEntries,
   zoneLabel,
   planProfileLabel,
   sysProfileLabel,
@@ -102,30 +100,6 @@ export function TaskManagementDetail({
             </Descriptions.Item>
           </Descriptions>
 
-          <Card
-            size="small"
-            className="task-inner-card"
-            title={
-              <Space>
-                <DatabaseOutlined />
-                <span>元数据</span>
-              </Space>
-            }
-          >
-            {metadataEntries.length > 0 ? (
-              <Descriptions column={1} size="small" colon={false}>
-                {metadataEntries.map(([key, value]) => (
-                  <Descriptions.Item key={key} label={key}>
-                    <Typography.Text ellipsis>
-                      {typeof value === 'string' ? value : JSON.stringify(value)}
-                    </Typography.Text>
-                  </Descriptions.Item>
-                ))}
-              </Descriptions>
-            ) : (
-              <AppEmptyState title="暂无任务元数据" description="后端这次没有返回额外元数据。" />
-            )}
-          </Card>
         </Space>
       ) : (
         <AppEmptyState

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { manageSchedule } from '../api/gateway/robotGateway'
+import { manageSchedule } from '../api/gateway/scheduleGateway'
 import { useProfileCatalog } from '../hooks/useProfileCatalog'
 import { useRosConnection } from '../hooks/useRosConnection'
 import type { RosConnectionSnapshot } from '../types/ros'
@@ -10,7 +10,7 @@ import type { TaskEntity } from '../types/task'
 import { useScheduleManagementData } from '../features/schedule-management/useScheduleManagementData'
 import { ScheduleManagementPage } from './ScheduleManagementPage'
 
-vi.mock('../api/gateway/robotGateway', () => ({
+vi.mock('../api/gateway/scheduleGateway', () => ({
   manageSchedule: vi.fn(),
 }))
 
@@ -26,13 +26,8 @@ vi.mock('../features/schedule-management/useScheduleManagementData', () => ({
   useScheduleManagementData: vi.fn(),
 }))
 
-vi.mock('../components/ros/RosbridgeEndpointControl', () => ({
-  RosbridgeEndpointControl: () => <span>ROS endpoint control</span>,
-}))
-
 const connectedSnapshot: RosConnectionSnapshot = {
   status: 'connected',
-  url: 'ws://127.0.0.1:9090',
   isConnected: true,
   lastError: null,
   connectedAt: Date.now(),
@@ -96,9 +91,7 @@ describe('ScheduleManagementPage', () => {
 
     vi.mocked(useRosConnection).mockReturnValue({
       snapshot: connectedSnapshot,
-      defaultUrl: 'ws://127.0.0.1:9090',
-      connect: vi.fn(),
-      disconnect: vi.fn(),
+      reconnect: vi.fn(),
     } as unknown as ReturnType<typeof useRosConnection>)
 
     vi.mocked(useProfileCatalog).mockReturnValue(({

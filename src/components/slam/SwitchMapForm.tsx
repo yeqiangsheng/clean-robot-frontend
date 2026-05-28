@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-import { Button, Card, Form, Input, Select, Space, Switch, Typography } from 'antd'
+import { Button, Card, Form, Input, Select, Switch } from 'antd'
 
 type SwitchMapFormValues = {
   mapName: string
@@ -38,11 +38,6 @@ export function SwitchMapForm({
 
   return (
     <Card title="切换地图" className="slam-card">
-      <Typography.Paragraph className="slam-card-copy">
-        通过 `/clean_robot_server/app/submit_slam_command(switch_map)` 提交切图请求，
-        只有在 `can_switch_map` 允许时才能执行。
-      </Typography.Paragraph>
-
       <Form<SwitchMapFormValues>
         form={form}
         layout="vertical"
@@ -61,6 +56,7 @@ export function SwitchMapForm({
         >
           {mapOptions.length > 0 ? (
             <Select
+              size="large"
               showSearch
               allowClear
               disabled={disabled}
@@ -69,7 +65,7 @@ export function SwitchMapForm({
               options={mapOptions}
             />
           ) : (
-            <Input disabled={disabled} placeholder="请输入 map_name" />
+            <Input size="large" disabled={disabled} placeholder="请输入 map_name" />
           )}
         </Form.Item>
 
@@ -89,18 +85,18 @@ export function SwitchMapForm({
           <Switch disabled={disabled} />
         </Form.Item>
 
-        <Form.Item name="description" label="说明">
-          <Input disabled={disabled} placeholder="可选，用于记录本次切图原因" />
-        </Form.Item>
-
-        <Space wrap>
-          <Button type="primary" htmlType="submit" loading={loading} disabled={disabled}>
+        <div className="slam-form-actions">
+          <Button
+            block
+            size="large"
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            disabled={disabled}
+          >
             切换地图
           </Button>
-          <Button disabled={disabled || loading} onClick={() => form.resetFields()}>
-            重置
-          </Button>
-        </Space>
+        </div>
       </Form>
     </Card>
   )

@@ -11,7 +11,6 @@ vi.mock('../../hooks/useSystemReadiness', () => ({
 
 const mockSnapshot: RosConnectionSnapshot = {
   status: 'connected',
-  url: 'ws://127.0.0.1:9090',
   isConnected: true,
   lastError: null,
   connectedAt: Date.now(),

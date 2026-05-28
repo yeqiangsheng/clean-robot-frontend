@@ -6,8 +6,13 @@ import type { GatewayErrorShape } from '../../types/appShell'
 describe('accessControl gateway helpers', () => {
   it('exposes the default site-gateway role policy used by the shell', () => {
     expect(isCapabilityAllowedForRole('overview', 'operator')).toBe(true)
+    expect(isCapabilityAllowedForRole('executionControl', 'operator')).toBe(false)
+    expect(isCapabilityAllowedForRole('taskManagement', 'operator')).toBe(false)
+    expect(isCapabilityAllowedForRole('actuatorControl', 'operator')).toBe(false)
     expect(isCapabilityAllowedForRole('runtimeMonitoring', 'service')).toBe(true)
-    expect(isCapabilityAllowedForRole('slamWorkbench', 'service')).toBe(false)
+    expect(isCapabilityAllowedForRole('slamWorkbench', 'service')).toBe(true)
+    expect(isCapabilityAllowedForRole('dockCalibration', 'service')).toBe(true)
+    expect(isCapabilityAllowedForRole('actuatorControl', 'service')).toBe(false)
     expect(isCapabilityAllowedForRole('actuatorControl', 'engineer')).toBe(true)
     expect(isCapabilityAllowedForRole('chargingControl', 'admin')).toBe(true)
   })

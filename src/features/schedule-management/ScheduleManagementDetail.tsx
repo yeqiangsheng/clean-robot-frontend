@@ -1,5 +1,5 @@
-import { Button, Card, Descriptions, Popconfirm, Space, Tag, Typography } from 'antd'
-import { DatabaseOutlined, EditOutlined } from '@ant-design/icons'
+import { Button, Card, Descriptions, Popconfirm, Space, Tag } from 'antd'
+import { EditOutlined } from '@ant-design/icons'
 
 import { AppEmptyState } from '../../components/feedback/AppEmptyState'
 import { AppFeedbackBanner } from '../../components/feedback/AppFeedbackBanner'
@@ -20,7 +20,6 @@ interface ScheduleManagementDetailProps {
   error: string | null
   notFound: boolean
   isSubmitting: boolean
-  metadataEntries: Array<[string, unknown]>
   planProfileLabel: string
   sysProfileLabel: string
   onEdit: () => void
@@ -34,7 +33,6 @@ export function ScheduleManagementDetail({
   error,
   notFound,
   isSubmitting,
-  metadataEntries,
   planProfileLabel,
   sysProfileLabel,
   onEdit,
@@ -105,58 +103,19 @@ export function ScheduleManagementDetail({
             <Descriptions.Item label="最近执行状态">
               {detail.lastStatus || '--'}
             </Descriptions.Item>
+            <Descriptions.Item label="地图">{detail.mapName || '--'}</Descriptions.Item>
+            <Descriptions.Item label="区域">{detail.zoneId || '--'}</Descriptions.Item>
+            <Descriptions.Item label="圈数">{detail.loops ?? '--'}</Descriptions.Item>
+            <Descriptions.Item label="清洁模式">{detail.cleanMode || '--'}</Descriptions.Item>
+            <Descriptions.Item label="结束后行为">
+              {formatReturnToDock(detail.returnToDockOnFinish)}
+            </Descriptions.Item>
+            <Descriptions.Item label="满电续扫">
+              {formatRepeatAfterFullCharge(detail.repeatAfterFullCharge)}
+            </Descriptions.Item>
+            <Descriptions.Item label="规划档位">{planProfileLabel}</Descriptions.Item>
+            <Descriptions.Item label="系统档位">{sysProfileLabel}</Descriptions.Item>
           </Descriptions>
-
-          <Card
-            size="small"
-            className="schedule-inner-card"
-            title={
-              <Space>
-                <DatabaseOutlined />
-                <span>继承任务快照</span>
-              </Space>
-            }
-          >
-            <Descriptions column={2} size="small" colon={false}>
-              <Descriptions.Item label="地图">{detail.mapName || '--'}</Descriptions.Item>
-              <Descriptions.Item label="区域">{detail.zoneId || '--'}</Descriptions.Item>
-              <Descriptions.Item label="圈数">{detail.loops ?? '--'}</Descriptions.Item>
-              <Descriptions.Item label="清洁模式">{detail.cleanMode || '--'}</Descriptions.Item>
-              <Descriptions.Item label="结束后行为">
-                {formatReturnToDock(detail.returnToDockOnFinish)}
-              </Descriptions.Item>
-              <Descriptions.Item label="满电续扫">
-                {formatRepeatAfterFullCharge(detail.repeatAfterFullCharge)}
-              </Descriptions.Item>
-              <Descriptions.Item label="规划档位">{planProfileLabel}</Descriptions.Item>
-              <Descriptions.Item label="系统档位">{sysProfileLabel}</Descriptions.Item>
-            </Descriptions>
-          </Card>
-
-          <Card
-            size="small"
-            className="schedule-inner-card"
-            title={
-              <Space>
-                <DatabaseOutlined />
-                <span>元数据</span>
-              </Space>
-            }
-          >
-            {metadataEntries.length > 0 ? (
-              <Descriptions column={1} size="small" colon={false}>
-                {metadataEntries.map(([key, value]) => (
-                  <Descriptions.Item key={key} label={key}>
-                    <Typography.Text ellipsis>
-                      {typeof value === 'string' ? value : JSON.stringify(value)}
-                    </Typography.Text>
-                  </Descriptions.Item>
-                ))}
-              </Descriptions>
-            ) : (
-              <AppEmptyState title="暂无调度元数据" description="后端这次没有返回额外元数据。" />
-            )}
-          </Card>
         </Space>
       ) : (
         <AppEmptyState

@@ -8,6 +8,7 @@
     "tasks": true,
     "schedules": true,
     "execution": true,
+    "dock-calibration": true,
     "slam": true,
     "runtime": true,
     "actuator-control": true

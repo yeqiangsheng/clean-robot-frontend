@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-import { RUNTIME_TOPIC_CONFIGS } from '../api/ros/runtimeServices'
+import { RUNTIME_TOPIC_CONFIGS } from '../api/contracts/runtimeTopicConfigs'
 import type {
   RuntimeTopicKey,
   RuntimeTopicSnapshot,

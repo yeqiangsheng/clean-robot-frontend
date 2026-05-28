@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { Card, Descriptions, Tag, Typography } from 'antd'
+import { Card, Descriptions } from 'antd'
 
 import { AppEmptyState } from '../feedback/AppEmptyState'
 import type { AreaEntity } from '../../types/map-editor'
@@ -30,20 +30,6 @@ function toBoolean(value: unknown) {
   }
 
   return null
-}
-
-function toStringArray(value: unknown) {
-  if (Array.isArray(value)) {
-    return value.filter(
-      (item): item is string => typeof item === 'string' && item.trim().length > 0,
-    )
-  }
-
-  if (typeof value === 'string' && value.trim().length > 0) {
-    return [value.trim()]
-  }
-
-  return []
 }
 
 function getFrameId(area: AreaEntity) {
@@ -105,19 +91,12 @@ export function NoGoDetailsPanel({ area, extra = null }: NoGoDetailsPanelProps) 
   }
 
   const enabled = toBoolean(area.raw.enabled)
-  const warnings = toStringArray(area.raw.warnings)
 
   return (
     <Card
       title="禁入区详情"
       className="workbench-card"
-      extra={
-        extra ?? (
-          <Tag color={enabled === false ? 'default' : 'orange'}>
-            {enabled === false ? '已禁用' : '已启用'}
-          </Tag>
-        )
-      }
+      extra={extra}
     >
       <Descriptions column={1} size="small" colon={false}>
         <Descriptions.Item label="禁入区 ID">{area.id}</Descriptions.Item>
@@ -129,20 +108,6 @@ export function NoGoDetailsPanel({ area, extra = null }: NoGoDetailsPanelProps) 
         <Descriptions.Item label="更新时间">{formatTimestamp(area.raw.updated_ts)}</Descriptions.Item>
       </Descriptions>
 
-      {warnings.length > 0 ? (
-        <div className="constraint-warning-block">
-          <Typography.Text strong>注意事项</Typography.Text>
-          <ul className="constraint-warning-list">
-            {warnings.map((warning, index) => (
-              <li key={`${warning}-${index}`}>{warning}</li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <Typography.Paragraph className="workbench-footnote constraint-details-footnote">
-          当前对象没有返回额外的后端告警。
-        </Typography.Paragraph>
-      )}
     </Card>
   )
 }

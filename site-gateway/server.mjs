@@ -4,12 +4,10 @@ import { dirname, extname, join, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 
-import { WebSocket, WebSocketServer } from 'ws'
-
 import { loadSiteConfig } from './lib/config.mjs'
 import {
+  DOCK_CALIBRATION_COMMAND_SERVICE_NAME,
   EXECUTION_SERVICE_NAME,
-  MIGRATED_WRITE_SERVICE_NAMES,
   SCHEDULE_SERVICE_NAME,
   SESSION_COOKIE_NAME,
   SLAM_SUBMIT_SERVICE_NAME,
@@ -18,6 +16,7 @@ import {
 import {
   bootstrapUsers,
   createSession,
+  deleteAllSessions,
   deleteSessionByTokenHash,
   findSessionByTokenHash,
   findUserByUsername,
@@ -36,7 +35,6 @@ import {
   parseCookies,
   verifyPassword,
 } from './lib/security.mjs'
-import { normalizeForwardedWebSocketMessage } from './lib/ws-proxy.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const gatewayDir = dirname(__filename)
@@ -69,6 +67,9 @@ mkdirSync(runtimeDir, { recursive: true })
 const siteConfig = loadSiteConfig(configPath)
 const database = openSiteDatabase(databasePath)
 bootstrapUsers(database, siteConfig.bootstrapUsers)
+if (siteConfig.clearSessionsOnStartup) {
+  deleteAllSessions(database)
+}
 pruneExpiredSessions(database)
 pruneExpiredAuditLogs(database, siteConfig.logRetentionDays)
 
@@ -144,6 +145,8 @@ function createGatewayError(message, options = {}) {
 
 function normalizeErrorResponse(error, requestId) {
   return {
+    ok: false,
+    success: false,
     code: error?.code ?? 'GATEWAY_ERROR',
     message: error instanceof Error ? error.message : 'Unexpected gateway error.',
     recoverable: error?.recoverable ?? true,
@@ -251,6 +254,16 @@ function getPublicConfigSnapshot() {
   }
 }
 
+function getPublicRosConnectionSnapshot(connection) {
+  return {
+    status: connection.status,
+    isConnected: connection.isConnected,
+    lastError: connection.lastError,
+    connectedAt: connection.connectedAt,
+    sessionId: connection.sessionId,
+  }
+}
+
 async function handleApiRequest(request, response, url) {
   const requestId = randomUUID()
 
@@ -262,27 +275,17 @@ async function handleApiRequest(request, response, url) {
         version: packageVersion,
         siteName: siteConfig.siteName,
         robotId: siteConfig.robotId,
-        ros: {
-          status: connection.status,
-          url: connection.url,
-          isConnected: connection.isConnected,
-          lastError: connection.lastError,
-          connectedAt: connection.connectedAt,
-          sessionId: connection.sessionId,
-        },
+        ros: getPublicRosConnectionSnapshot(connection),
       })
       return
     }
 
-    if (request.method === 'POST' && url.pathname === '/api/ros/reconnect') {
+    if (request.method === 'POST' && url.pathname === '/api/gateway/ros/reconnect') {
       requireSession(request)
-      const body = await readJsonBody(request)
-      const connection = await rosGateway.reconnect(
-        typeof body.url === 'string' ? body.url : '',
-      )
+      const connection = await rosGateway.reconnect()
       sendJson(response, 200, {
         success: true,
-        ros: connection,
+        ros: getPublicRosConnectionSnapshot(connection),
       })
       return
     }
@@ -443,14 +446,14 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/system/readiness') {
-      requireCapability(request, 'systemReadiness')
+      requireAnyCapability(request, ['systemReadiness', 'executionControl', 'overview'])
       const taskId = Number(url.searchParams.get('taskId') ?? '0')
       sendJson(response, 200, await rosGateway.getSystemReadiness(taskId))
       return
     }
 
     if (request.method === 'GET' && url.pathname === '/api/system/readiness/topic') {
-      requireCapability(request, 'systemReadiness')
+      requireAnyCapability(request, ['systemReadiness', 'executionControl', 'overview'])
       sendJson(response, 200, await rosGateway.getSystemReadinessTopicSnapshot())
       return
     }
@@ -502,7 +505,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/maps') {
-      requireCapability(request, 'taskManagement')
+      requireAnyCapability(request, ['taskManagement', 'mapWorkbench', 'slamWorkbench'])
       sendJson(response, 200, await rosGateway.listMaps())
       return
     }
@@ -529,6 +532,27 @@ async function handleApiRequest(request, response, url) {
       requireCapability(request, 'mapWorkbench')
       const body = await readJsonBody(request)
       sendJson(response, 200, await rosGateway.importCurrentMapAsset(body))
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/maps/soft-delete') {
+      requireCapability(request, 'mapWorkbench')
+      const body = await readJsonBody(request)
+      sendJson(response, 200, await rosGateway.softDeleteMapAsset(body))
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/maps/hard-delete') {
+      requireCapability(request, 'mapWorkbench')
+      const body = await readJsonBody(request)
+      sendJson(response, 200, await rosGateway.hardDeleteMapAsset(body))
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/maps/cleanup-disabled') {
+      requireCapability(request, 'mapWorkbench')
+      const body = await readJsonBody(request)
+      sendJson(response, 200, await rosGateway.cleanupDisabledMapAssets(body))
       return
     }
 
@@ -759,7 +783,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/tasks') {
-      requireCapability(request, 'taskManagement')
+      requireAnyCapability(request, ['taskManagement', 'executionControl', 'overview'])
       sendJson(response, 200, await rosGateway.listTasks())
       return
     }
@@ -902,7 +926,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === 'POST' && url.pathname === '/api/execution/commands') {
-      const { session } = requireCapability(request, 'executionControl')
+      const { session } = requireAnyCapability(request, ['executionControl', 'overview'])
       const body = await readJsonBody(request)
       const result = await rosGateway.executeTaskCommand(body.command, body.taskId)
       const record = createAuditEvent(session, {
@@ -914,6 +938,89 @@ async function handleApiRequest(request, response, url) {
         detail: {
           command: body.command,
           taskId: body.taskId,
+        },
+      }, requestId)
+      sendJson(response, 200, { ...result, auditEvent: record })
+      return
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/dock-calibration/status') {
+      requireAnyCapability(request, ['dockCalibration', 'chargingControl', 'actuatorControl'])
+      sendJson(
+        response,
+        200,
+        await rosGateway.getDockCalibrationStatus(
+          url.searchParams.get('robotId') ?? siteConfig.robotId,
+        ),
+      )
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/dock-calibration/command') {
+      const { session } = requireAnyCapability(request, [
+        'dockCalibration',
+        'chargingControl',
+        'actuatorControl',
+      ])
+      const body = await readJsonBody(request)
+      const result = await rosGateway.runDockCalibrationCommand(body, siteConfig.robotId)
+      const record = createAuditEvent(session, {
+        category: 'charging',
+        action: `dock-calibration:${result.operation ?? body.operation ?? 'unknown'}`,
+        target: DOCK_CALIBRATION_COMMAND_SERVICE_NAME,
+        status: result.success ? 'success' : 'failed',
+        message: result.message || 'Dock calibration command submitted.',
+        detail: {
+          operation: result.operation ?? body.operation,
+          requireStage2Quality:
+            body.requireStage2Quality ?? body.require_stage2_quality ?? false,
+          x: body.x,
+          y: body.y,
+          yaw: body.yaw,
+        },
+      }, requestId)
+      sendJson(response, 200, { ...result, auditEvent: record })
+      return
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/manual-drive/status') {
+      const { session, grantedCapabilities } = requireAnyCapability(request, [
+        'overview',
+        'executionControl',
+        'actuatorControl',
+      ])
+      sendJson(
+        response,
+        200,
+        await rosGateway.getManualDriveStatus({
+          role: session.role,
+          capabilities: grantedCapabilities,
+        }),
+      )
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/manual-drive/command') {
+      const { session, grantedCapabilities } = requireAnyCapability(request, [
+        'overview',
+        'executionControl',
+        'actuatorControl',
+      ])
+      const body = await readJsonBody(request)
+      const result = await rosGateway.runManualDriveCommand(body, {
+        role: session.role,
+        capabilities: grantedCapabilities,
+      })
+      const record = createAuditEvent(session, {
+        category: 'actuator',
+        action: `manual-drive:${result.action ?? body.action ?? 'unknown'}`,
+        target: '/clean_robot_server/app/manual_drive_command',
+        status: result.success ? 'success' : 'blocked',
+        message: result.message || 'Manual drive command submitted.',
+        detail: {
+          action: result.action ?? body.action,
+          direction: result.direction ?? body.direction,
+          blockedReasons: result.blockedReasons ?? [],
         },
       }, requestId)
       sendJson(response, 200, { ...result, auditEvent: record })
@@ -966,11 +1073,18 @@ async function handleApiRequest(request, response, url) {
       return
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/actuators/status') {
+      requireCapability(request, 'actuatorControl')
+      sendJson(response, 200, await rosGateway.getActuatorStatus())
+      return
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/actuator/commands') {
       const session = requireSession(request)
       const body = await readJsonBody(request)
+      const command = isRecord(body.command) ? body.command : body
       const capability =
-        body.command?.kind === 'chargingSequence' ? 'chargingControl' : 'actuatorControl'
+        command.kind === 'chargingSequence' ? 'chargingControl' : 'actuatorControl'
       const grantedCapabilities = buildGrantedCapabilities(siteConfig, session.role)
 
       if (!grantedCapabilities.includes(capability)) {
@@ -982,16 +1096,23 @@ async function handleApiRequest(request, response, url) {
         })
       }
 
-      await rosGateway.runActuatorCommand(body.command)
+      const lastCommand = await rosGateway.runActuatorCommand(command)
       const record = createAuditEvent(session, {
         category: capability === 'chargingControl' ? 'charging' : 'actuator',
-        action: body.command?.kind ?? 'unknown',
+        action: command.kind ?? 'unknown',
         target: '/mcore/*',
         status: 'success',
         message: '执行机构命令已下发。',
-        detail: body.command ?? {},
+        detail: command,
       }, requestId)
-      sendJson(response, 200, { success: true, auditEvent: record })
+      sendJson(response, 200, {
+        ok: true,
+        success: true,
+        kind: command.kind ?? 'unknown',
+        message: lastCommand.message,
+        lastCommand,
+        auditEvent: record,
+      })
       return
     }
 
@@ -1069,107 +1190,6 @@ const server = createServer((request, response) => {
   serveStatic(request, response, url)
 })
 
-const rosbridgeProxyServer = new WebSocketServer({ noServer: true })
-
-rosbridgeProxyServer.on('connection', (clientSocket) => {
-  const upstreamSocket = new WebSocket(siteConfig.rosbridgeUrl)
-  const pendingMessages = []
-
-  const sendProxyError = (message) => {
-    if (clientSocket.readyState === WebSocket.OPEN) {
-      clientSocket.send(
-        JSON.stringify({
-          op: 'status',
-          level: 'error',
-          msg: message,
-        }),
-      )
-    }
-  }
-
-  upstreamSocket.on('open', () => {
-    while (pendingMessages.length > 0 && upstreamSocket.readyState === WebSocket.OPEN) {
-      upstreamSocket.send(pendingMessages.shift())
-    }
-  })
-
-  upstreamSocket.on('message', (data, isBinary) => {
-    if (clientSocket.readyState === WebSocket.OPEN) {
-      const forwarded = normalizeForwardedWebSocketMessage(data, isBinary)
-      clientSocket.send(forwarded.payload, forwarded.options)
-    }
-  })
-
-  upstreamSocket.on('close', () => {
-    if (clientSocket.readyState === WebSocket.OPEN) {
-      clientSocket.close()
-    }
-  })
-
-  upstreamSocket.on('error', (error) => {
-    sendProxyError(error instanceof Error ? error.message : 'rosbridge upstream error')
-    if (clientSocket.readyState === WebSocket.OPEN) {
-      clientSocket.close()
-    }
-  })
-
-  clientSocket.on('message', (data, isBinary) => {
-    if (isBinary) {
-      return
-    }
-
-    const rawMessage = data.toString('utf8')
-
-    try {
-      const payload = JSON.parse(rawMessage)
-
-      if (payload?.op === 'publish') {
-        sendProxyError('Direct topic publish is blocked. Use the site-gateway HTTP APIs.')
-        return
-      }
-
-      if (
-        payload?.op === 'call_service' &&
-        typeof payload.service === 'string' &&
-        MIGRATED_WRITE_SERVICE_NAMES.has(payload.service)
-      ) {
-        sendProxyError(`Direct service call for ${payload.service} is blocked. Use the site-gateway HTTP APIs.`)
-        return
-      }
-    } catch {
-      // Forward non-JSON payloads unchanged.
-    }
-
-    if (upstreamSocket.readyState === WebSocket.OPEN) {
-      upstreamSocket.send(rawMessage)
-      return
-    }
-
-    pendingMessages.push(rawMessage)
-  })
-
-  clientSocket.on('close', () => {
-    if (upstreamSocket.readyState === WebSocket.OPEN) {
-      upstreamSocket.close()
-    }
-  })
-})
-
-server.on('upgrade', (request, socket, head) => {
-  const url = new URL(request.url ?? '/', `http://${request.headers.host ?? `${host}:${port}`}`)
-
-  if (url.pathname !== '/ws/rosbridge') {
-    socket.destroy()
-    return
-  }
-
-  rosbridgeProxyServer.handleUpgrade(request, socket, head, (ws) => {
-    rosbridgeProxyServer.emit('connection', ws, request)
-  })
-})
-
 server.listen(port, host, () => {
-  console.log(
-    `[site-gateway] listening on http://${host}:${port} with upstream ${siteConfig.rosbridgeUrl}`,
-  )
+  console.log(`[site-gateway] listening on http://${host}:${port}; rosbridge upstream configured`)
 })

@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 
-import { manageTask } from '../../api/gateway/robotGateway'
+import { manageTask } from '../../api/gateway/taskGateway'
 import { getTaskDetailQueryKey, getTaskListQueryKey } from './taskQueryKeys'
 import type { RosConnectionSnapshot } from '../../types/ros'
 

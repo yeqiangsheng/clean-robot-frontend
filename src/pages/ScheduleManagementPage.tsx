@@ -10,19 +10,17 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { PlusOutlined, ReloadOutlined, UnorderedListOutlined } from '@ant-design/icons'
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 
-import { manageSchedule } from '../api/gateway/robotGateway'
+import { manageSchedule } from '../api/gateway/scheduleGateway'
 import { AppEmptyState } from '../components/feedback/AppEmptyState'
 import { AppFeedbackBanner } from '../components/feedback/AppFeedbackBanner'
 import { AppLoadingState } from '../components/feedback/AppLoadingState'
-import { RosbridgeEndpointControl } from '../components/ros/RosbridgeEndpointControl'
 import { ScheduleManagementDetail } from '../features/schedule-management/ScheduleManagementDetail'
 import { ScheduleManagementEditor } from '../features/schedule-management/ScheduleManagementEditor'
 import {
   buildCreateScheduleDefaults,
   buildEditScheduleDefaults,
-  getScheduleMetadataEntries,
 } from '../features/schedule-management/scheduleManagementDefaults'
 import { useScheduleManagementData } from '../features/schedule-management/useScheduleManagementData'
 import { useProfileCatalog } from '../hooks/useProfileCatalog'
@@ -32,23 +30,6 @@ import { formatProfileDisplayName } from '../utils/profileCatalog'
 import './ScheduleManagementPage.css'
 
 type EditorMode = 'idle' | 'create' | 'edit'
-
-function getConnectionTag(status: string) {
-  switch (status) {
-    case 'connected':
-      return { color: 'success', label: '已连接' }
-    case 'connecting':
-      return { color: 'processing', label: '连接中' }
-    case 'error':
-      return { color: 'error', label: '连接异常' }
-    case 'mock':
-      return { color: 'purple', label: 'Mock 数据' }
-    case 'closed':
-      return { color: 'warning', label: '连接关闭' }
-    default:
-      return { color: 'default', label: '未连接' }
-  }
-}
 
 function getResultMessage(result: unknown) {
   if (typeof result !== 'object' || result === null || !('message' in result)) {
@@ -60,7 +41,7 @@ function getResultMessage(result: unknown) {
 }
 
 export function ScheduleManagementPage() {
-  const { snapshot, defaultUrl, connect } = useRosConnection()
+  const { snapshot } = useRosConnection()
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null)
   const [editorMode, setEditorMode] = useState<EditorMode>('idle')
   const [scheduleSearchText, setScheduleSearchText] = useState('')
@@ -73,7 +54,6 @@ export function ScheduleManagementPage() {
   const [autoSelectFirstSchedule, setAutoSelectFirstSchedule] = useState(true)
   const [form] = Form.useForm<ScheduleDraftInput>()
 
-  const connectionTag = getConnectionTag(snapshot.status)
   const {
     schedulesQuery,
     tasksQuery,
@@ -111,7 +91,6 @@ export function ScheduleManagementPage() {
     ],
   })
 
-  const metadataEntries = getScheduleMetadataEntries(selectedScheduleDetail)
   const visibleSchedules = useMemo(() => {
     const normalizedQuery = scheduleSearchText.trim().toLowerCase()
     const filteredSchedules = (schedulesQuery.data ?? []).filter((schedule) => {
@@ -185,11 +164,6 @@ export function ScheduleManagementPage() {
     setEditorMode('idle')
     form.resetFields()
   }, [detailNotFound, form])
-
-  const handleReconnect = async (url?: string) => {
-    await connect((url ?? snapshot.url) || defaultUrl)
-    await refetchScheduleData()
-  }
 
   const handleStartCreate = () => {
     setActionError(null)
@@ -312,19 +286,7 @@ export function ScheduleManagementPage() {
       <header className="schedule-page-header">
         <div>
           <Typography.Title level={2}>调度管理</Typography.Title>
-          <Typography.Paragraph>
-            调度 CRUD 统一通过 `/database_server/app/clean_schedule_service`。
-          </Typography.Paragraph>
         </div>
-        <Space size="middle" wrap>
-          <Tag color="gold">调度站点页</Tag>
-          <Tag color={connectionTag.color}>{connectionTag.label}</Tag>
-          <RosbridgeEndpointControl
-            snapshot={snapshot}
-            defaultUrl={defaultUrl}
-            onConnect={handleReconnect}
-          />
-        </Space>
       </header>
 
       {snapshot.status === 'error' && snapshot.lastError ? (
@@ -332,15 +294,6 @@ export function ScheduleManagementPage() {
           tone="error"
           title="ROS 连接异常"
           description={snapshot.lastError}
-          className="schedule-banner"
-        />
-      ) : null}
-
-      {snapshot.status === 'mock' ? (
-        <AppFeedbackBanner
-          tone="info"
-          title="当前正在使用 Mock 数据"
-          description="如果需要接入真实后端，请在 `.env.development` 中设置 `VITE_USE_MOCK_DATA=false`。"
           className="schedule-banner"
         />
       ) : null}
@@ -493,7 +446,6 @@ export function ScheduleManagementPage() {
             }
             notFound={detailNotFound}
             isSubmitting={isSubmitting}
-            metadataEntries={metadataEntries}
             planProfileLabel={renderProfileValue(selectedScheduleDetail?.planProfileName ?? '', 'plan')}
             sysProfileLabel={renderProfileValue(selectedScheduleDetail?.sysProfileName ?? '', 'sys')}
             onEdit={handleStartEdit}
@@ -508,30 +460,9 @@ export function ScheduleManagementPage() {
             isSubmitting={isSubmitting}
             tasks={tasksQuery.data ?? []}
             selectedType={selectedTypeInForm}
-            selectedTask={selectedTaskInForm}
-            planProfileLabel={renderProfileValue(selectedTaskInForm?.planProfileName ?? '', 'plan')}
-            sysProfileLabel={renderProfileValue(selectedTaskInForm?.sysProfileName ?? '', 'sys')}
             onSubmit={handleSubmit}
             onCancel={handleCancelEdit}
           />
-
-          <Card
-            title="本页范围"
-            className="schedule-card"
-            extra={<UnorderedListOutlined />}
-          >
-            <ul className="schedule-scope-list">
-              {[
-                '调度列表查询',
-                '调度详情查看',
-                '按任务关联 / 周期 / 时间窗口创建',
-                '调度修改',
-                '调度删除',
-              ].map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </Card>
         </aside>
       </div>
     </div>

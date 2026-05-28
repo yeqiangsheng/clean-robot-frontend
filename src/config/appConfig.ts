@@ -12,6 +12,7 @@ export const APP_MODULE_KEYS = [
   'tasks',
   'schedules',
   'execution',
+  'dock-calibration',
   'slam',
   'runtime',
   'actuator-control',
@@ -29,6 +30,7 @@ export const CAPABILITY_FLAGS = [
   'runtimeMonitoring',
   'actuatorControl',
   'chargingControl',
+  'dockCalibration',
   'profileCatalog',
   'systemReadiness',
 ] as const satisfies readonly CapabilityFlag[]
@@ -39,6 +41,7 @@ const DEFAULT_ENABLED_MODULES: Record<AppModuleKey, boolean> = {
   tasks: true,
   schedules: true,
   execution: true,
+  'dock-calibration': true,
   slam: true,
   runtime: true,
   'actuator-control': true,
@@ -260,10 +263,6 @@ export function sanitizeAppConfig(config: AppConfig = currentConfig): AppConfig 
 
 export function getApiBaseUrl() {
   return currentConfig.apiBaseUrl || DEFAULT_CONFIG.apiBaseUrl
-}
-
-export function getRosbridgeProxyPath() {
-  return '/ws/rosbridge'
 }
 
 export function isModuleEnabled(moduleKey: AppModuleKey) {

@@ -1,9 +1,9 @@
-import type {
+﻿import type {
   Point2D,
   RegionSet,
   ZoneRectDraft,
 } from '../types/map-editor'
-import type { RosServiceRequest } from '../types/ros'
+import type { GatewayPayload } from '../types/gateway'
 import { closePolygon } from './geometry'
 
 function getDistinctPolygonPoints(region: RegionSet | null) {
@@ -96,7 +96,7 @@ export function updateRectRegionFromDraggedCorner(
 export function buildPolygonRegionRequest(
   frameId: string,
   region: RegionSet | null,
-): RosServiceRequest | null {
+): GatewayPayload | null {
   const polygon = getDistinctPolygonPoints(region)
 
   if (polygon.length < 4) {

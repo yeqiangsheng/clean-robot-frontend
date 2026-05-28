@@ -1,149 +1,175 @@
 import {
-  ACTUATOR_CONTROL_TOPICS,
-  ACTUATOR_LEVEL_MAX,
-  disableChargingSequence,
-  enableChargingSequence,
-  publishBrushClose,
-  publishBrushLower,
-  publishBrushOpen,
-  publishBrushRaise,
-  publishBrushRetract,
-  publishBrushWorkPosition,
-  publishScraperDeploy,
-  publishScraperLower,
-  publishScraperRaise,
-  publishScraperStow,
-  publishSewageValve,
-  publishSuctionClose,
-  publishSuctionLevel,
-  publishSuctionOpen,
-  publishVacuumChainOff,
-  publishVacuumChainOn,
-  publishVacuumMax,
-  publishVacuumMotor,
-  publishVacuumOff,
-  publishWaterPump,
-  publishWaterSequenceOff,
-  publishWaterSequenceOn,
-  publishWaterValve,
-} from '../ros/actuatorControlTopics'
-import { requestActuatorCommand } from './siteGatewayClient'
+  requestActuatorCommand,
+  requestActuatorStatus,
+} from './siteGatewayRobotControlClient'
+import { USE_MOCK_DATA } from '../../config/runtimeMode'
+import type { ActuatorCommand, ActuatorStatus } from '../../types/actuator'
 
-const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
+export const ACTUATOR_LEVEL_MAX = 100
 
-export { ACTUATOR_CONTROL_TOPICS, ACTUATOR_LEVEL_MAX }
+export const ACTUATOR_CONTROL_TOPICS = {
+  waterTap: {
+    name: '/mcore/control_water_tap',
+    type: 'robot_platform_msgs/ControlWaterTap',
+  },
+  motor: {
+    name: '/mcore/control_motor',
+    type: 'robot_platform_msgs/ControlMotor',
+  },
+  cleanTools: {
+    name: '/mcore/control_clean_tools',
+    type: 'robot_platform_msgs/ControlCleanTools',
+  },
+  stationControl: {
+    name: '/station/control',
+    type: 'robot_platform_msgs/ControlStation',
+  },
+  chargeEnable: {
+    name: '/mcore/charge_enable',
+    type: 'std_msgs/Bool',
+  },
+} as const
 
-export type ActuatorGatewayCommand =
-  | { kind: 'waterPump'; level: number }
-  | { kind: 'waterValve'; enabled: boolean }
-  | { kind: 'sewageValve'; enabled: boolean }
-  | { kind: 'waterSequence'; enabled: boolean; level?: number }
-  | { kind: 'suction'; enabled: boolean }
-  | { kind: 'suctionLevel'; level: number }
-  | { kind: 'vacuumMotor'; level: number }
-  | { kind: 'vacuumPreset'; mode: 'max' | 'off' }
-  | { kind: 'vacuumChain'; enabled: boolean; level?: number }
-  | { kind: 'chargingSequence'; enabled: boolean }
-  | {
-      kind:
-        | 'brushOpen'
-        | 'brushClose'
-        | 'brushRaise'
-        | 'brushLower'
-        | 'brushWorkPosition'
-        | 'brushRetract'
-        | 'scraperRaise'
-        | 'scraperLower'
-        | 'scraperStow'
-        | 'scraperDeploy'
+export type { ActuatorCommand }
+
+export async function getActuatorStatus(): Promise<ActuatorStatus> {
+  if (USE_MOCK_DATA) {
+    return {
+      ok: true,
+      success: true,
+      rosbridge: 'mock',
+      available: true,
+      disabledReasons: [],
+      mcoreConnected: true,
+      stationConnected: true,
+      dockSupplyState: 'IDLE',
+      cleanLevel: 80,
+      sewageLevel: 0,
+      batteryPercentage: 90,
+      batteryVoltage: 24000,
+      batteryCurrent: -3.1,
+      station: {
+        agvInPlace: true,
+        rodConnected: false,
+        rodReset: true,
+        rawStatus: [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+        ],
+      },
+      battery: {
+        percentage: 0.9,
+        voltage: 24,
+        current: -3.1,
+      },
+      levels: {
+        cleanLevel: 80,
+        sewageLevel: 0,
+      },
+      capabilities: {
+        dockSupply: true,
+        stationIo: true,
+        mechanicalConnect: false,
+      },
+      brush: { position: 0, label: '原位' },
+      scraper: { position: 1, label: '到位' },
+      lastCommand: {
+        kind: '',
+        state: 'idle',
+        startedAtMs: 0,
+        sentAtMs: 0,
+        failedAtMs: null,
+        message: '',
+      },
+      topics: {
+        combinedStatus: {
+          topicName: '/combined_status',
+          messageType: 'robot_platform_msgs/CombinedStatus',
+          fresh: true,
+          ageMs: 1000,
+        },
+        mcoreConnected: {
+          topicName: '/mcore_tcp_bridge/connected',
+          messageType: 'std_msgs/Bool',
+          fresh: true,
+          ageMs: 1000,
+        },
+        stationConnected: {
+          topicName: '/station_tcp_bridge/connected',
+          messageType: 'std_msgs/Bool',
+          fresh: true,
+          ageMs: 1000,
+        },
+        dockSupplyState: {
+          topicName: '/dock_supply/state',
+          messageType: 'std_msgs/String',
+          fresh: true,
+          ageMs: 1000,
+        },
+        stationStatus: {
+          topicName: '/station_status',
+          messageType: 'robot_platform_msgs/StationStatus',
+          fresh: true,
+          ageMs: 1000,
+        },
+        batteryState: {
+          topicName: '/battery_state',
+          messageType: 'sensor_msgs/BatteryState',
+          fresh: true,
+          ageMs: 1000,
+        },
+      },
     }
+  }
 
-export async function runActuatorCommand(command: ActuatorGatewayCommand) {
+  return requestActuatorStatus()
+}
+
+export async function runActuatorCommand(command: ActuatorCommand) {
   if (!USE_MOCK_DATA) {
     await requestActuatorCommand(command)
     return
   }
 
   switch (command.kind) {
-    case 'waterPump':
-      await publishWaterPump(command.level)
-      return
-    case 'waterValve':
-      await publishWaterValve(command.enabled)
-      return
-    case 'sewageValve':
-      await publishSewageValve(command.enabled)
-      return
     case 'waterSequence':
-      if (command.enabled) {
-        await publishWaterSequenceOn(command.level ?? ACTUATOR_LEVEL_MAX)
-        return
-      }
-      await publishWaterSequenceOff()
-      return
-    case 'suction':
-      if (command.enabled) {
-        await publishSuctionOpen()
-        return
-      }
-      await publishSuctionClose()
-      return
-    case 'suctionLevel':
-      await publishSuctionLevel(command.level)
-      return
-    case 'vacuumMotor':
-      await publishVacuumMotor(command.level)
-      return
-    case 'vacuumPreset':
-      if (command.mode === 'max') {
-        await publishVacuumMax()
-        return
-      }
-      await publishVacuumOff()
       return
     case 'vacuumChain':
-      if (command.enabled) {
-        await publishVacuumChainOn(command.level ?? ACTUATOR_LEVEL_MAX)
-        return
-      }
-      await publishVacuumChainOff()
-      return
-    case 'chargingSequence':
-      if (command.enabled) {
-        await enableChargingSequence()
-        return
-      }
-      await disableChargingSequence()
-      return
-    case 'brushOpen':
-      await publishBrushOpen()
-      return
-    case 'brushClose':
-      await publishBrushClose()
-      return
-    case 'brushRaise':
-      await publishBrushRaise()
-      return
-    case 'brushLower':
-      await publishBrushLower()
       return
     case 'brushWorkPosition':
-      await publishBrushWorkPosition()
       return
     case 'brushRetract':
-      await publishBrushRetract()
-      return
-    case 'scraperRaise':
-      await publishScraperRaise()
-      return
-    case 'scraperLower':
-      await publishScraperLower()
-      return
-    case 'scraperStow':
-      await publishScraperStow()
       return
     case 'scraperDeploy':
-      await publishScraperDeploy()
+      return
+    case 'scraperStow':
+      return
+    case 'dockSupplyStart':
+    case 'dockSupplyCancel':
+    case 'dockSupplyDeferExit':
+    case 'dockSupplyExit':
+      return
+    case 'chargingSequence':
+      return
+    case 'stationRefillSequence':
+      return
+    case 'stationDrainSequence':
+      return
+    case 'stationRodConnect':
+      return
+    case 'stationRodReset':
       return
     default: {
       const exhaustiveCheck: never = command

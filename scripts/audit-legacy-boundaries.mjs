@@ -20,7 +20,11 @@ const protectedEntries = [
   'src/features',
   'src/hooks',
   'src/stores',
+  'src/utils',
+  'src/api/contracts',
   'src/api/gateway',
+  'src/workers',
+  'site-gateway/lib',
   'site-gateway/server.mjs',
 ]
 
@@ -48,6 +52,46 @@ const forbiddenPatterns = [
     test: (line) => line.includes('/clean_robot_server/slam_command_service'),
   },
   {
+    label: '/clean_robot_server/submit_slam_command',
+    test: (line) => line.includes('/clean_robot_server/submit_slam_command'),
+  },
+  {
+    label: '/database_server/map_alignment_service',
+    test: (line) => line.includes('/database_server/map_alignment_service'),
+  },
+  {
+    label: '/database_server/map_alignment_by_points_service',
+    test: (line) => line.includes('/database_server/map_alignment_by_points_service'),
+  },
+  {
+    label: '/database_server/rect_zone_preview_service',
+    test: (line) => line.includes('/database_server/rect_zone_preview_service'),
+  },
+  {
+    label: '/database_server/coverage_zone_service',
+    test: (line) => line.includes('/database_server/coverage_zone_service'),
+  },
+  {
+    label: '/database_server/zone_plan_path_service',
+    test: (line) => line.includes('/database_server/zone_plan_path_service'),
+  },
+  {
+    label: '/database_server/coverage_preview_service',
+    test: (line) => line.includes('/database_server/coverage_preview_service'),
+  },
+  {
+    label: '/database_server/coverage_commit_service',
+    test: (line) => line.includes('/database_server/coverage_commit_service'),
+  },
+  {
+    label: '/database_server/no_go_area_service',
+    test: (line) => line.includes('/database_server/no_go_area_service'),
+  },
+  {
+    label: '/database_server/virtual_wall_service',
+    test: (line) => line.includes('/database_server/virtual_wall_service'),
+  },
+  {
     label: '/clean_robot_server/get_slam_status',
     test: (line) => line.includes('/clean_robot_server/get_slam_status'),
   },
@@ -69,7 +113,27 @@ const forbiddenPatterns = [
   },
   {
     label: 'deprecated fallback',
-    test: (line) => line.includes('deprecated fallback'),
+    test: (line) => /deprecated fallback/i.test(line),
+  },
+  {
+    label: 'deprecatedFallback',
+    test: (line) => line.includes('deprecatedFallback'),
+  },
+  {
+    label: '_FALLBACK_NAME',
+    test: (line) => line.includes('_FALLBACK_NAME'),
+  },
+  {
+    label: 'readQueryFallback',
+    test: (line) => line.includes('readQueryFallback'),
+  },
+  {
+    label: 'callAppFirstReadQueryService',
+    test: (line) => line.includes('callAppFirstReadQueryService'),
+  },
+  {
+    label: 'mapLegacyResponse',
+    test: (line) => line.includes('mapLegacyResponse'),
   },
   {
     label: '/home/baer/Doraemon',
@@ -82,6 +146,131 @@ const forbiddenPatterns = [
   {
     label: 'ws://10.0.0.174:9090',
     test: (line) => line.includes('ws://10.0.0.174:9090'),
+  },
+  {
+    label: 'browser rosbridge proxy route',
+    test: (line) => line.includes('/ws/rosbridge'),
+  },
+  {
+    label: 'browser websocket proxy route',
+    test: (line) => line.includes('/ws/*') || line.includes("'/ws'") || line.includes('"/ws"'),
+  },
+  {
+    label: 'browser websocket proxy env',
+    test: (line) => line.includes('VITE_SITE_GATEWAY_WS_TARGET'),
+  },
+  {
+    label: 'browser rosbridge reconnect route',
+    test: (line) => line.includes('/gateway/rosbridge/reconnect'),
+  },
+  {
+    label: 'browser rosbridge proxy server',
+    test: (line) => line.includes('WebSocketServer'),
+  },
+  {
+    label: 'browser rosbridge proxy helper',
+    test: (line) => line.includes('normalizeForwardedWebSocketMessage'),
+  },
+  {
+    label: 'browser rosbridge proxy config helper',
+    test: (line) => line.includes('getRosbridgeProxyPath'),
+  },
+  {
+    label: 'browser-side ROS subscription wording',
+    test: (line) => /browser-side ROS subscriptions/i.test(line),
+  },
+  {
+    label: 'rosbridge proxying wording',
+    test: (line) => /rosbridge proxying/i.test(line),
+  },
+  {
+    label: 'browser-visible ROS upstream URL state',
+    test: (line) =>
+      line.includes('snapshot.url') ||
+      line.includes('connection.url') ||
+      line.includes('health.ros.url') ||
+      line.includes('defaultUrl'),
+  },
+  {
+    label: 'browser ROS service request type',
+    test: (line) => line.includes('RosServiceRequest'),
+  },
+  {
+    label: 'browser remember password control',
+    test: (line) => line.includes('rememberPassword') || line.includes('记住密码'),
+  },
+  {
+    label: 'browser stores login password',
+    test: (line) => /localStorage\.setItem\(.*password/i.test(line),
+  },
+  {
+    label: 'browser imports old api/ros namespace',
+    test: (line) =>
+      /^import\s+(?!type\b).*\sfrom\s+['"].*\/api\/ros\/[^'"]+['"]/.test(line) ||
+      /import\(['"].*\/api\/ros\/[^'"]+['"]\)/.test(line) ||
+      /^import\s+(?!type\b).*\sfrom\s+['"]\.\.\/ros\/[^'"]+['"]/.test(line) ||
+      /import\(['"]\.\.\/ros\/[^'"]+['"]\)/.test(line),
+  },
+  {
+    label: 'static direct ROS gateway import',
+    test: (line) =>
+      /^import\s+(?!type\b).*\sfrom\s+['"]\.\.\/ros\/(client|executionServices|mapCatalogServices|odometryServices|profileCatalogServices|runtimeServices|scheduleServices|services|slamWorkflowServices|systemReadinessServices|taskServices)['"]/.test(
+        line,
+      ),
+  },
+  {
+    label: 'dynamic direct ROS service import',
+    test: (line) =>
+      /import\(['"]\.\.\/ros\/(client|executionServices|mapCatalogServices|odometryServices|profileCatalogServices|runtimeServices|scheduleServices|services|slamWorkflowServices|systemReadinessServices|taskServices)['"]\)/.test(
+        line,
+      ) ||
+      /import\(['"]\.\/(client|executionServices|mapCatalogServices|odometryServices|profileCatalogServices|runtimeServices|scheduleServices|services|slamWorkflowServices|systemReadinessServices|taskServices)['"]\)/.test(
+        line,
+      ),
+  },
+  {
+    label: 'browser imports direct ROS client',
+    test: (line) =>
+      /^import\s+(?!type\b).*\sfrom\s+['"].*\/api\/ros\/client['"]/.test(line) ||
+      /import\(['"].*\/api\/ros\/client['"]\)/.test(line),
+  },
+  {
+    label: 'runtime UI imports direct ROS runtime service',
+    test: (line) =>
+      /^import\s+(?!type\b).*\sfrom\s+['"].*\/api\/ros\/runtimeServices['"]/.test(line),
+  },
+  {
+    label: 'runtime UI imports direct ROS SLAM topic service',
+    test: (line) =>
+      /^import\s+(?!type\b).*\sfrom\s+['"].*\/api\/ros\/slamWorkflowTopics['"]/.test(line),
+  },
+  {
+    label: 'legacy robotGateway aggregate import',
+    test: (line) =>
+      /^import\s+(?!type\b).*\sfrom\s+['"].*\/api\/gateway\/robotGateway['"]/.test(line) ||
+      /^import\s+(?!type\b).*\sfrom\s+['"]\.\/robotGateway['"]/.test(line) ||
+      /^export\s+.*\sfrom\s+['"]\.\/robotGateway['"]/.test(line),
+  },
+  {
+    label: 'legacy components/ros import',
+    test: (line) =>
+      /^import\s+(?!type\b).*\sfrom\s+['"].*\/components\/ros\/[^'"]+['"]/.test(line) ||
+      /import\(['"].*\/components\/ros\/[^'"]+['"]\)/.test(line),
+  },
+]
+
+const forbiddenPathPatterns = [
+  {
+    label: 'legacy components/ros namespace',
+    test: (relativePath) => relativePath.startsWith('src/components/ros/'),
+  },
+  {
+    label: 'legacy browser rosbridge proxy client',
+    test: (relativePath) => relativePath === 'src/api/gateway/connectionUrl.ts',
+  },
+  {
+    label: 'legacy browser rosbridge proxy helper',
+    test: (relativePath) => relativePath.startsWith('site-gateway/lib/ws-proxy.'),
   },
 ]
 
@@ -117,6 +306,18 @@ for (const filePath of filesToAudit) {
   const content = readFileSync(filePath, 'utf8')
   const lines = content.split(/\r?\n/)
   const relativePath = normalizePath(filePath)
+
+  for (const pattern of forbiddenPathPatterns) {
+    if (!pattern.test(relativePath)) {
+      continue
+    }
+
+    findings.push({
+      file: relativePath,
+      line: 1,
+      token: pattern.label,
+    })
+  }
 
   lines.forEach((line, index) => {
     for (const pattern of forbiddenPatterns) {

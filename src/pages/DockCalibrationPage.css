@@ -1,0 +1,237 @@
+.dock-calibration-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100vh;
+  padding: 28px;
+}
+
+.dock-calibration-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.dock-calibration-header .ant-typography {
+  margin-bottom: 0;
+}
+
+.dock-calibration-header .manual-drive-trigger {
+  height: 40px;
+  min-width: 104px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+.dock-calibration-header .manual-drive-trigger .anticon {
+  font-size: 16px;
+}
+
+.dock-calibration-banner {
+  border-radius: 16px;
+}
+
+.dock-calibration-card {
+  border: 1px solid rgba(91, 111, 120, 0.18);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 12px 30px rgba(22, 35, 39, 0.07);
+}
+
+.dock-calibration-card .ant-card-head,
+.dock-calibration-card .ant-card-body {
+  min-width: 0;
+}
+
+.dock-calibration-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dock-calibration-pose-card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dock-calibration-pose-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dock-calibration-pose-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dock-calibration-pose-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(91, 111, 120, 0.14);
+  border-radius: 12px;
+  background: rgba(247, 249, 249, 0.78);
+}
+
+.dock-calibration-pose-grid span,
+.dock-calibration-storage-path span {
+  color: rgba(43, 55, 60, 0.62);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.dock-calibration-pose-grid strong,
+.dock-calibration-storage-path strong {
+  min-width: 0;
+  color: rgba(25, 34, 38, 0.92);
+  font-size: 16px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.dock-calibration-storage-path {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(25, 34, 38, 0.05);
+}
+
+.dock-calibration-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.dock-calibration-score-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 14px;
+}
+
+.dock-calibration-score-card.is-pass {
+  background: rgba(31, 122, 104, 0.1);
+}
+
+.dock-calibration-score-card.is-warning {
+  background: rgba(209, 119, 33, 0.12);
+}
+
+.dock-calibration-score-card .ant-typography {
+  margin-bottom: 0;
+}
+
+.dock-calibration-score-reference {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(91, 111, 120, 0.14);
+  border-radius: 12px;
+  background: rgba(247, 249, 249, 0.72);
+}
+
+.dock-calibration-score-reference .ant-typography {
+  color: #2f4d91;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.6;
+}
+
+.dock-calibration-warning-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.dock-calibration-advanced {
+  border: 1px solid rgba(91, 111, 120, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.dock-calibration-advanced .ant-collapse-item {
+  border-bottom: none;
+}
+
+.dock-calibration-advanced .ant-collapse-header {
+  align-items: center !important;
+  font-weight: 800;
+}
+
+.dock-calibration-manual-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.dock-calibration-manual-point {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dock-calibration-manual-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(80px, 1fr)) minmax(82px, auto);
+  gap: 10px;
+  align-items: center;
+}
+
+.dock-calibration-manual-grid .ant-input-number {
+  width: 100%;
+}
+
+.dock-calibration-stage-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 1120px) {
+  .dock-calibration-page {
+    padding: 22px;
+  }
+
+  .dock-calibration-stage-grid,
+  .dock-calibration-manual-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .dock-calibration-page {
+    padding: 18px;
+  }
+
+  .dock-calibration-pose-grid,
+  .dock-calibration-manual-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dock-calibration-score-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
