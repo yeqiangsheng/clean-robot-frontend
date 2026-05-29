@@ -194,14 +194,12 @@ function getStartBlockedAdvice(readinessGate: ReturnType<typeof useTaskStartGate
 interface ExecutionCommandCardProps {
   className?: string
   children?: ReactNode
-  executionIdleOverride?: boolean
   showStartBlockedAdvice?: boolean
 }
 
 export function ExecutionCommandCard({
   className,
   children,
-  executionIdleOverride = false,
   showStartBlockedAdvice = false,
 }: ExecutionCommandCardProps) {
   const { snapshot } = useRosConnection()
@@ -234,16 +232,11 @@ export function ExecutionCommandCard({
   const slamState = useSlamWorkflowState(snapshot, { enabled: canReadSlamState })
   const hasActiveSlamJob = Boolean(slamState.effectiveState?.activeJobId?.trim())
   const hasSelectedTask = selectedTask !== null && effectiveTaskId > 0
-  const serviceReadiness = readinessGate.serviceQuery.data?.readiness ?? null
-  const startReadiness =
-    executionIdleOverride && serviceReadiness
-      ? serviceReadiness
-      : readinessGate.effectiveReadiness
+  const startReadiness = readinessGate.effectiveReadiness
   const canIssueStart =
     effectiveTaskId > 0 &&
     snapshot.status !== 'connecting' &&
     Boolean(startReadiness?.canStartTask)
-  const { refetch: refetchReadiness } = readinessGate.serviceQuery
 
   const taskOptions = useMemo(
     () =>
@@ -271,29 +264,25 @@ export function ExecutionCommandCard({
     () =>
       servicesReady &&
       hasSelectedTask &&
-      !executionIdleOverride &&
       isPauseAllowed(readinessGate.effectiveReadiness),
-    [executionIdleOverride, hasSelectedTask, readinessGate.effectiveReadiness, servicesReady],
+    [hasSelectedTask, readinessGate.effectiveReadiness, servicesReady],
   )
   const canContinue = useMemo(
     () =>
       servicesReady &&
       hasSelectedTask &&
-      !executionIdleOverride &&
       isContinueAllowed(readinessGate.effectiveReadiness),
-    [executionIdleOverride, hasSelectedTask, readinessGate.effectiveReadiness, servicesReady],
+    [hasSelectedTask, readinessGate.effectiveReadiness, servicesReady],
   )
   const canStop = useMemo(
     () =>
       servicesReady &&
       hasSelectedTask &&
-      !executionIdleOverride &&
       isStopAllowed(readinessGate.effectiveReadiness),
-    [executionIdleOverride, hasSelectedTask, readinessGate.effectiveReadiness, servicesReady],
+    [hasSelectedTask, readinessGate.effectiveReadiness, servicesReady],
   )
   const shouldShowStartBlockedAdvice =
     showStartBlockedAdvice &&
-    !executionIdleOverride &&
     servicesReady &&
     hasSelectedTask &&
     !canIssueStart &&
@@ -320,14 +309,6 @@ export function ExecutionCommandCard({
       setFocusedTaskName(selectedTask.name)
     }
   }, [focusedTaskName, selectedTask, setFocusedTaskName])
-
-  useEffect(() => {
-    if (!executionIdleOverride || !servicesReady || !hasSelectedTask) {
-      return
-    }
-
-    void refetchReadiness()
-  }, [effectiveTaskId, executionIdleOverride, hasSelectedTask, refetchReadiness, servicesReady])
 
   const handleTaskChange = (nextTaskId: number | null) => {
     const nextTask =

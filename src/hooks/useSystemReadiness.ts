@@ -94,6 +94,8 @@ export function useSystemReadiness(
     retry: false,
     staleTime: 5_000,
     refetchOnWindowFocus: false,
+    refetchInterval: servicesReady && snapshot.status !== 'mock' ? 1_000 : false,
+    refetchIntervalInBackground: true,
   })
 
   const topicQuery = useQuery({
@@ -164,12 +166,12 @@ export function useSystemReadiness(
   )
 
   const effectiveReadiness = useMemo(() => {
-    if (topicSnapshot.readiness && topicMatchesTask) {
+    if (topicSnapshot.health === 'live' && topicSnapshot.readiness && topicMatchesTask) {
       return topicSnapshot.readiness
     }
 
     return serviceQuery.data?.readiness ?? null
-  }, [serviceQuery.data?.readiness, topicMatchesTask, topicSnapshot.readiness])
+  }, [serviceQuery.data?.readiness, topicMatchesTask, topicSnapshot.health, topicSnapshot.readiness])
 
   return {
     serviceQuery,

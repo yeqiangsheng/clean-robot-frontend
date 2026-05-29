@@ -57,8 +57,8 @@ const OVERVIEW_RUNTIME_TOPIC_KEYS: RuntimeTopicKey[] = [
   'runProgress',
 ]
 
-const DAILY_STATS_STORAGE_KEY = 'clean_robot_overview_daily_stats_v2'
-const CUMULATIVE_STATS_STORAGE_KEY = 'clean_robot_runtime_cumulative_stats_v2'
+const DAILY_STATS_STORAGE_KEY = 'clean_robot_overview_daily_stats_v3'
+const CUMULATIVE_STATS_STORAGE_KEY = 'clean_robot_runtime_cumulative_stats_v3'
 const CLEANING_WIDTH_M = 0.6
 const BATTERY_WARNING_PERCENT = 20
 const CLEAN_WATER_WARNING_PERCENT = 25
@@ -265,14 +265,19 @@ function getFiniteNumber(...values: unknown[]) {
   return null
 }
 
-function getRunId(runProgress: JsonRecord) {
+function getBackendRunId(runProgress: JsonRecord) {
   const runId = runProgress.run_id
-  const taskId = runProgress.task_id
-  const zoneId = runProgress.zone_id
 
   if (typeof runId === 'string' && runId.trim()) {
     return runId.trim()
   }
+
+  return null
+}
+
+function getRunIdentityBase(runProgress: JsonRecord) {
+  const taskId = runProgress.task_id
+  const zoneId = runProgress.zone_id
 
   if (typeof taskId === 'number' && Number.isFinite(taskId)) {
     return `task-${taskId}`
@@ -283,6 +288,10 @@ function getRunId(runProgress: JsonRecord) {
   }
 
   return 'active-run'
+}
+
+function createSyntheticRunId(runProgress: JsonRecord) {
+  return `${getRunIdentityBase(runProgress)}-${Date.now()}`
 }
 
 function getRunCompleted(runProgress: JsonRecord) {
@@ -297,6 +306,63 @@ function getRunCompleted(runProgress: JsonRecord) {
       state.includes(token),
     )
   )
+}
+
+const RUN_PROGRESS_ACTIVE_TOKENS = [
+  'RUNNING',
+  'FOLLOW',
+  'CLEANING',
+  'COVERAGE',
+  'COVER',
+  'EXECUTING',
+  'ACTIVE',
+  'WORKING',
+  'NAVIGATING',
+  'STARTING',
+  '清扫',
+  '运行',
+]
+
+const RUN_PROGRESS_PAUSED_TOKENS = [
+  'PAUSE',
+  'PAUSED',
+  'HOLD',
+  'HELD',
+  'SUSPEND',
+  'SUSPENDED',
+  '暂停',
+]
+
+function getRunProgressPercent(runProgress: JsonRecord | null) {
+  if (!runProgress) {
+    return null
+  }
+
+  return normalizePercent(runProgress.progress_pct) ?? normalizePercent(runProgress.progress_0_1)
+}
+
+function getRunProgressStateValues(runProgress: JsonRecord | null) {
+  if (!runProgress) {
+    return []
+  }
+
+  return [runProgress.state, runProgress.mode, runProgress.phase]
+}
+
+function isRunProgressActive(runProgress: JsonRecord | null, isFresh: boolean) {
+  if (!isFresh || !runProgress || getRunCompleted(runProgress)) {
+    return false
+  }
+
+  return containsStatusToken(getRunProgressStateValues(runProgress), RUN_PROGRESS_ACTIVE_TOKENS)
+}
+
+function isRunProgressPaused(runProgress: JsonRecord | null, isFresh: boolean) {
+  if (!isFresh || !runProgress || getRunCompleted(runProgress)) {
+    return false
+  }
+
+  return containsStatusToken(getRunProgressStateValues(runProgress), RUN_PROGRESS_PAUSED_TOKENS)
 }
 
 function getRunArea(runProgress: JsonRecord) {
@@ -441,6 +507,7 @@ function getRobotStatusPresentation({
   batteryState,
   combinedStatus,
   readiness,
+  runProgressFresh,
 }: {
   isOnline: boolean
   runProgress: JsonRecord | null
@@ -450,6 +517,7 @@ function getRobotStatusPresentation({
   batteryState: JsonRecord | null
   combinedStatus: JsonRecord | null
   readiness: SystemReadiness | null
+  runProgressFresh: boolean
 }): RobotStatusPresentation {
   if (!isOnline) {
     return {
@@ -461,18 +529,19 @@ function getRobotStatusPresentation({
     }
   }
 
+  const readinessExecutionIdle = isReadinessExecutionIdle(readiness)
+  const runtimeTaskStateValues = readinessExecutionIdle ? [] : [taskState, executorState]
+  const runProgressStateValues =
+    runProgressFresh && !readinessExecutionIdle ? getRunProgressStateValues(runProgress) : []
   const observedStates = [
-    taskState,
-    executorState,
+    ...runtimeTaskStateValues,
     dockSupplyState,
     readiness?.missionState,
     readiness?.phase,
     readiness?.publicState,
     readiness?.executorState,
     readiness?.dockSupplyState,
-    runProgress?.state,
-    runProgress?.mode,
-    runProgress?.phase,
+    ...runProgressStateValues,
     combinedStatus?.state,
     combinedStatus?.status,
     combinedStatus?.mission,
@@ -486,14 +555,12 @@ function getRobotStatusPresentation({
     combinedStatus?.phase,
   ]
   const activeMovementStates = [
-    taskState,
-    executorState,
+    ...runtimeTaskStateValues,
     readiness?.missionState,
     readiness?.phase,
     readiness?.publicState,
     readiness?.executorState,
-    runProgress?.state,
-    runProgress?.phase,
+    ...runProgressStateValues,
     combinedStatus?.executor_state,
     combinedStatus?.phase,
     combinedStatus?.workflow,
@@ -571,36 +638,17 @@ function getRobotStatusPresentation({
     }
   }
 
-  const progressPercent =
-    normalizePercent(runProgress?.progress_pct) ?? normalizePercent(runProgress?.progress_0_1)
-  const readinessExecutionIdle = isReadinessExecutionIdle(readiness)
-  const isMovementIdle = readinessExecutionIdle || containsStatusToken(activeMovementStates, [
-    'IDLE',
-    'READY',
-    'WAIT',
-    'DONE',
-    'FINISH',
-    'COMPLETE',
-    'SUCCESS',
-    'STOPPED',
-    '空闲',
-    '完成',
+  const progressPercent = getRunProgressPercent(runProgress)
+
+  const hasActiveMovementState = containsStatusToken(activeMovementStates, [
+    ...RUN_PROGRESS_ACTIVE_TOKENS,
   ])
   const hasActiveProgress =
-    progressPercent !== null && progressPercent > 0 && progressPercent < 99.5 && !isMovementIdle
-  const hasActiveMovementState = !isMovementIdle && containsStatusToken(activeMovementStates, [
-      'RUNNING',
-      'FOLLOW',
-      'CLEANING',
-      'COVERAGE',
-      'COVER',
-      'EXECUTING',
-      'ACTIVE',
-      'WORKING',
-      'NAVIGATING',
-      '清扫',
-      '运行',
-    ])
+    runProgressFresh &&
+    progressPercent !== null &&
+    progressPercent > 0 &&
+    progressPercent < 99.5 &&
+    containsStatusToken(getRunProgressStateValues(runProgress), RUN_PROGRESS_ACTIVE_TOKENS)
   if (hasActiveProgress || hasActiveMovementState) {
     return {
       label: '清扫中',
@@ -638,6 +686,11 @@ export function OperationsOverviewPage({ isActive = true }: OperationsOverviewPa
   const [dailyStats, setDailyStats] = useState(() => loadDailyStats(dateKey))
   const [cumulativeStats, setCumulativeStats] = useState(() => loadCumulativeStats())
   const observedActiveRunIdsRef = useRef<Set<string>>(new Set())
+  const syntheticRunRef = useRef<{
+    baseId: string
+    completed: boolean
+    runId: string
+  } | null>(null)
   const [returningHome, setReturningHome] = useState(false)
   const [returnHomeError, setReturnHomeError] = useState<string | null>(null)
 
@@ -653,6 +706,9 @@ export function OperationsOverviewPage({ isActive = true }: OperationsOverviewPa
   const cleanWaterPercent = normalizePercent(combinedStatus?.clean_level)
   const sewagePercent = normalizePercent(combinedStatus?.sewage_level)
   const stationPresentation = getStationPresentation(topicMap.stationStatus.health)
+  const runProgressFresh = snapshot.status === 'mock' || topicMap.runProgress.health === 'live'
+  const runProgressActive = isRunProgressActive(runProgress, runProgressFresh)
+  const runProgressPaused = isRunProgressPaused(runProgress, runProgressFresh)
   const hasRobotTelemetry =
     snapshot.status === 'mock' ||
     readiness !== null ||
@@ -672,6 +728,7 @@ export function OperationsOverviewPage({ isActive = true }: OperationsOverviewPa
     batteryState,
     combinedStatus,
     readiness,
+    runProgressFresh,
   })
   const resourceGauges: Array<{
     key: string
@@ -781,16 +838,51 @@ export function OperationsOverviewPage({ isActive = true }: OperationsOverviewPa
       return
     }
 
-    const runId = getRunId(runProgress)
     const distanceM = getRunDistance(runProgress)
     const areaM2 = getRunArea(runProgress)
     const completed = getRunCompleted(runProgress)
+    const backendRunId = getBackendRunId(runProgress)
+    const runIdentityBase = getRunIdentityBase(runProgress)
+    const trackingRun =
+      runProgressActive ||
+      runProgressPaused ||
+      (!completed && distanceM !== null && distanceM > 0)
+    let runId = backendRunId
+
+    if (!runId) {
+      const existingSyntheticRun = syntheticRunRef.current
+
+      if (
+        trackingRun &&
+        (!existingSyntheticRun ||
+          existingSyntheticRun.baseId !== runIdentityBase ||
+          existingSyntheticRun.completed)
+      ) {
+        syntheticRunRef.current = {
+          baseId: runIdentityBase,
+          completed: false,
+          runId: createSyntheticRunId(runProgress),
+        }
+      }
+
+      runId = syntheticRunRef.current?.runId ?? null
+    }
+
+    if (!runId) {
+      return
+    }
+
     const observedActiveRunIds = observedActiveRunIdsRef.current
 
     if (!completed) {
       observedActiveRunIds.add(runId)
     } else if (!observedActiveRunIds.has(runId)) {
       return
+    } else if (syntheticRunRef.current?.runId === runId) {
+      syntheticRunRef.current = {
+        ...syntheticRunRef.current,
+        completed: true,
+      }
     }
 
     if (distanceM === null && areaM2 === null && !completed) {
@@ -858,7 +950,7 @@ export function OperationsOverviewPage({ isActive = true }: OperationsOverviewPa
         return nextStats
       })
     }
-  }, [dateKey, runProgress])
+  }, [dateKey, runProgress, runProgressActive, runProgressPaused])
 
   return (
     <div className="overview-page">
@@ -908,9 +1000,6 @@ export function OperationsOverviewPage({ isActive = true }: OperationsOverviewPa
 
         <ExecutionCommandCard
           className="overview-panel-card overview-command-card"
-          executionIdleOverride={
-            robotStatus.canReturnHome || (runProgress ? getRunCompleted(runProgress) : false)
-          }
           showStartBlockedAdvice={isActive}
         >
           <div className="overview-command-progress">
